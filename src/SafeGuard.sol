@@ -13,8 +13,75 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
+    /**
+     * @notice Initializes the contract.
+     * @param admin The address that will be granted the admin role.
+     */
+    function initialize(address admin) public initializer {
+        __AccessControl_init();
+
+        // Grant the admin role to the deployer
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+    }
+
+    /// TransactionGuard ///
+
+    /**
+     * @notice Called by the Safe contract before a transaction is executed.
+     * @dev Reverts if the transaction is not executed by an owner.
+     */
+    function checkTransaction(
+        address to,
+        uint256 value,
+        bytes memory data,
+        Enum.Operation, /* operation */
+        uint256, /* safeTxGas */
+        uint256, /* baseGas */
+        uint256, /* gasPrice */
+        address, /* gasToken */
+        address payable, /* refundReceiver */
+        bytes memory, /* signatures */
+        address /* executor */
+    ) external view override {
+        // TODO: optimize this; it should do another external call to handle this.
+        SafeGuard(address(this)).validateCall(to, value, data);
+    }
+
+    /**
+     * @inheritdoc ITransactionGuard
+     */
+    function checkAfterExecution(bytes32, bool) external pure override {
+        // No-op implementation
+    }
+
+    /**
+     * @inheritdoc IModuleGuard
+     */
+    function checkModuleTransaction(address, uint256, bytes memory, Enum.Operation, address)
+        external
+        pure
+        override
+        returns (bytes32 moduleTxHash)
+    {
+        // No-op implementation
+        return bytes32(0);
+    }
+
+    /**
+     * @inheritdoc IModuleGuard
+     */
+    function checkAfterModuleExecution(bytes32, bool) external pure override {
+        // No-op implementation
+    }
+
+    /// VautLib Guard Rules ///
+
     // Role identifier for processor manager
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
+
+    function validateCall(address target, uint256 value, bytes calldata data) public view {
+        Guard.validateCall(target, value, data);
+    }
 
     /**
      * @notice Sets the processor rule for a given contract address and function signature.
@@ -58,6 +125,8 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         return VaultLib.getProcessorStorage();
     }
 
+    /// ERC165 ///
+
     /**
      * @inheritdoc IERC165
      */
@@ -71,52 +140,5 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         return interfaceId == type(ITransactionGuard).interfaceId // 0xe6d7a83a
             || interfaceId == type(IModuleGuard).interfaceId // 0x58401ed8
             || interfaceId == type(IERC165).interfaceId; // 0x01ffc9a7
-    }
-
-    /**
-     * @notice Called by the Safe contract before a transaction is executed.
-     * @dev Reverts if the transaction is not executed by an owner.
-     */
-    function checkTransaction(
-        address to,
-        uint256 value,
-        bytes memory data,
-        Enum.Operation operation,
-        uint256, /* safeTxGas */
-        uint256, /* baseGas */
-        uint256, /* gasPrice */
-        address, /* gasToken */
-        address payable, /* refundReceiver */
-        bytes memory, /* signatures */
-        address /* executor */
-    ) external view override {
-        // Guard.validateCall(to, value, data);
-    }
-
-    /**
-     * @inheritdoc ITransactionGuard
-     */
-    function checkAfterExecution(bytes32, bool) external pure override {
-        // No-op implementation
-    }
-
-    /**
-     * @inheritdoc IModuleGuard
-     */
-    function checkModuleTransaction(address, uint256, bytes memory, Enum.Operation, address)
-        external
-        pure
-        override
-        returns (bytes32 moduleTxHash)
-    {
-        // No-op implementation
-        return bytes32(0);
-    }
-
-    /**
-     * @inheritdoc IModuleGuard
-     */
-    function checkAfterModuleExecution(bytes32, bool) external pure override {
-        // No-op implementation
     }
 }
