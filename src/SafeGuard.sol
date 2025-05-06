@@ -13,10 +13,15 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
     /**
      * @notice Initializes the contract.
      * @param admin The address that will be granted the admin role.
      */
+
     function initialize(address admin) public initializer {
         __AccessControl_init();
 
@@ -79,6 +84,13 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     // Role identifier for processor manager
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
 
+    /**
+     * @notice Validates a transaction call against the guard rules
+     * @param target The address of the target contract
+     * @param value The amount of ETH being sent with the call
+     * @param data The calldata of the transaction
+     * @dev This function is called by the checkTransaction function to validate calls
+     */
     function validateCall(address target, uint256 value, bytes calldata data) public view {
         Guard.validateCall(target, value, data);
     }
@@ -115,6 +127,21 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         for (uint256 i = 0; i < targetLength; i++) {
             _setProcessorRule(target[i], functionSig[i], rule[i]);
         }
+    }
+
+    /**
+     * @notice Returns the function rule for a given contract address and function signature.
+     * @param contractAddress The address of the contract.
+     * @param funcSig The function signature.
+     * @return FunctionRule The function rule.
+     */
+    function getProcessorRule(address contractAddress, bytes4 funcSig)
+        public
+        view
+        virtual
+        returns (IVault.FunctionRule memory)
+    {
+        return _getProcessorStorage().rules[contractAddress][funcSig];
     }
 
     /**
