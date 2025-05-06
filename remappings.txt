@@ -1,1 +1,4 @@
 lib/openzeppelin-contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/
+
+lib/forge-std/src=./lib/yieldnest-vault/lib/forge-std/src
+lib/yieldnest-vault:src=lib/yieldnest-vault/src
