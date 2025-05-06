@@ -9,7 +9,7 @@ import {ISafe} from "lib/safe-smart-account/contracts/interfaces/ISafe.sol";
 import {Guard} from "lib/yieldnest-vault/src/module/Guard.sol";
 import {VaultLib, IVault} from "lib/yieldnest-vault/src/library/VaultLib.sol";
 // import {IVault} from "lib/yieldnest-vault/src/interface/IVault.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {AccessControlUpgradeable} from "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
