@@ -12,6 +12,14 @@ import {Enum} from "lib/safe-smart-account/contracts/libraries/Enum.sol";
 import {SafeProxyFactory} from "lib/safe-smart-account/contracts/proxies/SafeProxyFactory.sol";
 import {SafeProxy} from "lib/safe-smart-account/contracts/proxies/SafeProxy.sol";
 import {Safe} from "lib/safe-smart-account/contracts/Safe.sol";
+import {MockERC20} from "lib/yieldnest-vault/test/unit/mocks/MockERC20.sol";
+import {MockERC4626} from "lib/yieldnest-vault/test/mainnet/mocks/MockERC4626.sol";
+import {IVault} from "lib/yieldnest-vault/src/interface/IVault.sol";
+import {SafeRules} from "lib/yieldnest-vault/script/rules/SafeRules.sol";
+import {IERC20} from "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
+import {IValidator} from "lib/yieldnest-vault/src/interface/IValidator.sol";
+import {BaseRules} from "lib/yieldnest-vault/script/rules/BaseRules.sol";
 
 contract GnosisSafeTest is Test {
     SafeGuard implementation;
@@ -29,6 +37,10 @@ contract GnosisSafeTest is Test {
     // Owner addresses for the Safe
     address[] owners;
     uint256 threshold = 1;
+    
+    // Mock tokens
+    MockERC20 mockToken;
+    MockERC4626 mockVault;
 
     function setUp() public {
         // Set up accounts
@@ -71,32 +83,127 @@ contract GnosisSafeTest is Test {
 
         SafeProxy safeProxy = factory.createProxyWithNonce(address(singleton), initializer, 0);
         safe = ISafe(address(safeProxy));
+
+        // Deploy mock tokens
+        mockToken = new MockERC20("Mock Token", "MTK");
+        mockVault = new MockERC4626(mockToken, "Mock Vault", "MVT");
+        
+        addSafeGuardAsModule();
     }
 
-    function test_AddSafeGuardAsModule() public {
+    function addSafeGuardAsModule() public {
         // Prepare the transaction to enable the module
         bytes memory data = abi.encodeWithSelector(IModuleManager.enableModule.selector, address(safeguard));
-
+        
+        // Execute the transaction and verify the module was added successfully
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+        assertTrue(success, "Failed to add SafeGuard as module");
+        assertTrue(safe.isModuleEnabled(address(safeguard)), "SafeGuard module not enabled");
+    }
+    
+    function executeTransaction(address to, uint256 value, bytes memory data, Enum.Operation operation) 
+        internal returns (bool success) 
+    {
         vm.startPrank(user);
-
-        // Execute the transaction to add the SafeGuard as a module
-        bool success = safe.execTransaction(
-            address(safe), // to
-            0, // value
-            data, // data
-            Enum.Operation.Call, // operation
+        
+        // Create signature for the transaction
+        bytes memory signature = abi.encodePacked(
+            uint256(uint160(user)),
+            uint256(0),
+            uint8(1)
+        );
+        
+        // Execute the transaction
+        success = safe.execTransaction(
+            to,
+            value,
+            data,
+            operation,
             0, // safeTxGas
             0, // baseGas
             0, // gasPrice
             address(0), // gasToken
             payable(address(0)), // refundReceiver
-            "" // signatures (empty for single owner with threshold 1)
+            signature // signatures
         );
-
+        
         vm.stopPrank();
+        return success;
+    }
 
-        // Verify the module was added successfully
-        assertTrue(success, "Failed to add SafeGuard as module");
-        assertTrue(safe.isModuleEnabled(address(safeguard)), "SafeGuard module not enabled");
+    function test_executeTransaction() public {
+
+        // Mint mock tokens to the Gnosis Safe
+        uint256 mintAmount = 1000 * 10**18; // 1000 tokens
+        vm.prank(address(safe));
+        mockToken.mint(mintAmount);
+        assertEq(mockToken.balanceOf(address(safe)), mintAmount, "Safe should have received tokens");
+        
+        // Set up rules for approve and deposit
+        vm.startPrank(processorManager);
+        
+        // Create rule for token approval using BaseRules
+        SafeRules.RuleParams memory approvalRule = BaseRules.getApprovalRule(address(mockToken), address(mockVault));
+        
+        // Create rule for deposit
+        SafeRules.RuleParams memory depositRule = BaseRules.getDepositRule(address(mockVault), address(safe));
+        
+        // Prepare array of rules
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](2);
+        ruleParams[0] = approvalRule;
+        ruleParams[1] = depositRule;
+        
+        // Set the rules in the SafeGuard using the library function
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+        
+        // Execute approve transaction
+        uint256 approveAmount = 500 * 10**18; // 500 tokens
+        bytes memory approveData = abi.encodeWithSelector(
+            IERC20.approve.selector,
+            address(mockVault),
+            approveAmount
+        );
+        
+        bool approveSuccess = executeTransaction(
+            address(mockToken),
+            0,
+            approveData,
+            Enum.Operation.Call
+        );
+        assertTrue(approveSuccess, "Approve transaction failed");
+        assertEq(
+            mockToken.allowance(address(safe), address(mockVault)),
+            approveAmount,
+            "Allowance not set correctly"
+        );
+        
+        // Execute deposit transaction
+        uint256 depositAmount = 300 * 10**18; // 300 tokens
+        bytes memory depositData = abi.encodeWithSelector(
+            IERC4626.deposit.selector,
+            depositAmount,
+            address(safe)
+        );
+        
+        bool depositSuccess = executeTransaction(
+            address(mockVault),
+            0,
+            depositData,
+            Enum.Operation.Call
+        );
+        assertTrue(depositSuccess, "Deposit transaction failed");
+        
+        // Verify deposit was successful
+        assertEq(
+            mockToken.balanceOf(address(safe)),
+            mintAmount - depositAmount,
+            "Token balance should be reduced after deposit"
+        );
+        assertGt(
+            mockVault.balanceOf(address(safe)),
+            0,
+            "Safe should have received vault shares"
+        );
     }
 }
