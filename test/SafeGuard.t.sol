@@ -43,6 +43,33 @@ contract SafeGuardTest is Test {
         vm.stopPrank();
     }
 
+    function test_setProcessorRules_revertWhenCallerNotProcessorManager() public {
+        // Create sample targets
+        address mockContract = address(0x1234);
+        address mockToken = address(0x5678);
+
+        // Use BaseRules to get predefined rules
+        SafeRules.RuleParams memory approvalRule = BaseRules.getApprovalRule(mockToken, address(this));
+
+        // Prepare arrays for setProcessorRules
+        address[] memory targets = new address[](1);
+        bytes4[] memory functionSigs = new bytes4[](1);
+        IVault.FunctionRule[] memory rules = new IVault.FunctionRule[](1);
+
+        targets[0] = approvalRule.contractAddress;
+        functionSigs[0] = approvalRule.funcSig;
+        rules[0] = approvalRule.rule;
+
+        // Call from unauthorized user (not processorManager)
+        vm.startPrank(user);
+
+        // Expect revert when caller doesn't have PROCESSOR_MANAGER_ROLE
+        vm.expectRevert();
+        safeguard.setProcessorRules(targets, functionSigs, rules);
+
+        vm.stopPrank();
+    }
+
     function test_setProcessorRules() public {
         // Create sample targets
         address mockContract = address(0x1234);
@@ -113,6 +140,70 @@ contract SafeGuardTest is Test {
             depositRule.contractAddress, // to
             0, // value
             txData, // data
+            Enum.Operation.Call, // operation
+            0, // safeTxGas
+            0, // baseGas
+            0, // gasPrice
+            address(0), // gasToken
+            payable(address(0)), // refundReceiver
+            bytes(""), // signatures
+            address(this) // executor
+        );
+    }
+
+    function test_checkTransaction_succeedsWithActiveRule() public {
+        // Create sample targets
+        address mockContract = address(0x1234);
+        address mockToken = address(0x5678);
+
+        // Use BaseRules to get predefined rules
+        SafeRules.RuleParams memory approvalRule = BaseRules.getApprovalRule(mockToken, address(this));
+        SafeRules.RuleParams memory depositRule = BaseRules.getDepositRule(mockContract, user);
+
+        // Make sure rules are active
+        approvalRule.rule.isActive = true;
+        depositRule.rule.isActive = true;
+
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](2);
+        ruleParams[0] = approvalRule;
+        ruleParams[1] = depositRule;
+
+        vm.startPrank(processorManager);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+
+        // Verify the rules were set correctly
+        IVault.FunctionRule memory retrievedRule =
+            safeguard.getProcessorRule(depositRule.contractAddress, depositRule.funcSig);
+        assertEq(retrievedRule.isActive, true);
+
+        // Create transaction data for the active rule (deposit function)
+        // The first parameter is uint256 amount, second is address receiver
+        bytes memory txData = abi.encodeWithSelector(depositRule.funcSig, 1000, user);
+
+        // This should not revert since the rule is active and parameters match the allowed values
+        safeguard.checkTransaction(
+            depositRule.contractAddress, // to
+            0, // value
+            txData, // data
+            Enum.Operation.Call, // operation
+            0, // safeTxGas
+            0, // baseGas
+            0, // gasPrice
+            address(0), // gasToken
+            payable(address(0)), // refundReceiver
+            bytes(""), // signatures
+            address(this) // executor
+        );
+
+        // Also test the approval rule
+        bytes memory approvalData = abi.encodeWithSelector(approvalRule.funcSig, address(this), 500);
+
+        // This should also not revert
+        safeguard.checkTransaction(
+            approvalRule.contractAddress, // to
+            0, // value
+            approvalData, // data
             Enum.Operation.Call, // operation
             0, // safeTxGas
             0, // baseGas
