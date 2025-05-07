@@ -42,10 +42,6 @@ contract SafeGuardTest is Test {
     }
 
     function test_setProcessorRules() public {
-        address[] memory targets = new address[](2);
-        bytes4[] memory functionSigs = new bytes4[](2);
-        IVault.FunctionRule[] memory rules = new IVault.FunctionRule[](2);
-
         // Create sample targets
         address mockContract = address(0x1234);
         address mockToken = address(0x5678);
@@ -55,41 +51,27 @@ contract SafeGuardTest is Test {
 
         SafeRules.RuleParams memory depositRule = BaseRules.getDepositRule(mockContract, user);
 
-        // Set up the targets and function signatures from the rules
-        targets[0] = approvalRule.contractAddress;
-        targets[1] = depositRule.contractAddress;
-
-        functionSigs[0] = approvalRule.funcSig;
-        functionSigs[1] = depositRule.funcSig;
-
-        // Define the rules with specific parameters
-        rules[0] = IVault.FunctionRule({
-            isActive: true,
-            paramRules: new IVault.ParamRule[](0),
-            validator: IValidator(address(0))
-        });
-
-        rules[1] = IVault.FunctionRule({
-            isActive: true,
-            paramRules: new IVault.ParamRule[](0),
-            validator: IValidator(address(0))
-        });
-        // Set the processor rules
-        vm.prank(processorManager);
-        safeguard.setProcessorRules(targets, functionSigs, rules);
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](2);
+        ruleParams[0] = approvalRule;
+        ruleParams[1] = depositRule;
+        vm.startPrank(processorManager);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
 
         // Verify the rules were set correctly
-        IVault.FunctionRule memory retrievedRule0 = safeguard.getProcessorRule(targets[0], functionSigs[0]);
-        IVault.FunctionRule memory retrievedRule1 = safeguard.getProcessorRule(targets[1], functionSigs[1]);
+        IVault.FunctionRule memory retrievedRule0 =
+            safeguard.getProcessorRule(approvalRule.contractAddress, approvalRule.funcSig);
+        IVault.FunctionRule memory retrievedRule1 =
+            safeguard.getProcessorRule(depositRule.contractAddress, depositRule.funcSig);
 
         // Assert rule 0 properties (approval rule)
         assertEq(retrievedRule0.isActive, true);
         assertEq(address(retrievedRule0.validator), address(0));
-        assertEq(retrievedRule0.paramRules.length, 0);
+        assertEq(retrievedRule0.paramRules.length, 2);
 
         // Assert rule 1 properties (deposit rule)
         assertEq(retrievedRule1.isActive, true);
         assertEq(address(retrievedRule1.validator), address(0));
-        assertEq(retrievedRule1.paramRules.length, 0);
+        assertEq(retrievedRule1.paramRules.length, 2);
     }
 }
