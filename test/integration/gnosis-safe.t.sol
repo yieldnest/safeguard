@@ -90,7 +90,7 @@ contract GnosisSafeTest is Test {
         mockToken = new MockERC20("Mock Token", "MTK");
         mockVault = new MockERC4626(mockToken, "Mock Vault", "MVT");
 
-        addSafeGuardAsModule();
+        addSafeGuardAsGuard();
 
         // Set up rules for approve and deposit
         vm.startPrank(processorManager);
@@ -111,25 +111,7 @@ contract GnosisSafeTest is Test {
         vm.stopPrank();
     }
 
-    function addSafeGuardAsModule() public {
-        {
-            // Prepare the transaction to enable the module
-            bytes memory data = abi.encodeWithSelector(IModuleManager.enableModule.selector, address(safeguard));
-
-            // Execute the transaction and verify the module was added successfully
-            bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
-            assertTrue(success, "Failed to add SafeGuard as module");
-            assertTrue(safe.isModuleEnabled(address(safeguard)), "SafeGuard module not enabled");
-        }
-
-        {
-            bytes memory data = abi.encodeWithSelector(IModuleManager.setModuleGuard.selector, address(safeguard));
-
-            // Execute the transaction and verify the module guard was set successfully
-            bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
-            assertTrue(success, "Failed to set SafeGuard as module guard");
-        }
-
+    function addSafeGuardAsGuard() public {
         {
             // Prepare the transaction to set the guard
             bytes memory data = abi.encodeWithSelector(IGuardManager.setGuard.selector, address(safeguard));
@@ -209,7 +191,11 @@ contract GnosisSafeTest is Test {
             mintAmount - depositAmount,
             "Token balance should be reduced after deposit"
         );
-        assertGt(mockVault.balanceOf(address(safe)), 0, "Safe should have received vault shares");
+        assertEq(
+            mockVault.balanceOf(address(safe)),
+            depositAmount,
+            "Safe should have received vault shares equal to deposit amount"
+        );
     }
 
     function test_RevertWhenReceiverIsRandomAddress() public {
