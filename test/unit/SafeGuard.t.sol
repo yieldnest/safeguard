@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {Test} from "lib/forge-std/src/Test.sol";
-import {SafeGuard} from "../src/SafeGuard.sol";
+import {SafeGuard} from "src/SafeGuard.sol";
 import {ProxyAdmin} from "lib/openzeppelin-contracts/contracts/proxy/transparent/ProxyAdmin.sol";
 import {TransparentUpgradeableProxy} from
     "lib/openzeppelin-contracts/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
