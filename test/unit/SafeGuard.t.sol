@@ -45,7 +45,6 @@ contract SafeGuardTest is Test {
 
     function test_setProcessorRules_revertWhenCallerNotProcessorManager() public {
         // Create sample targets
-        address mockContract = address(0x1234);
         address mockToken = address(0x5678);
 
         // Use BaseRules to get predefined rules
