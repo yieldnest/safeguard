@@ -8,7 +8,8 @@ import {Enum} from "lib/safe-smart-account/contracts/libraries/Enum.sol";
 import {ISafe} from "lib/safe-smart-account/contracts/interfaces/ISafe.sol";
 import {Guard} from "lib/yieldnest-vault/src/module/Guard.sol";
 import {VaultLib, IVault} from "lib/yieldnest-vault/src/library/VaultLib.sol";
-// import {IVault} from "lib/yieldnest-vault/src/interface/IVault.sol";
+import {IAccessControl} from "lib/openzeppelin-contracts/contracts/access/IAccessControl.sol";
+
 import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
@@ -167,6 +168,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     {
         return interfaceId == type(ITransactionGuard).interfaceId // 0xe6d7a83a
             || interfaceId == type(IModuleGuard).interfaceId // 0x58401ed8
-            || interfaceId == type(IERC165).interfaceId; // 0x01ffc9a7
+            || interfaceId == type(IERC165).interfaceId // 0x01ffc9a7
+            || interfaceId == type(IAccessControl).interfaceId;
     }
 }
