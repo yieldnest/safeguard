@@ -48,7 +48,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         bytes memory, /* signatures */
         address /* executor */
     ) external view override {
-        // TODO: optimize this; it should do another external call to handle this.
+        // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
         SafeGuard(address(this)).validateCall(to, value, data);
     }
 
@@ -110,6 +110,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
     /**
      * @notice Sets the processor rule for a given contract address and function signature.
+     * @dev This function does not check for duplicate rules.
      * @param target The address of the target contract.
      * @param functionSig The function signature.
      * @param rule The function rule.
