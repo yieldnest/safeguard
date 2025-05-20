@@ -28,6 +28,7 @@ abstract contract BaseScript is Script {
 
     TimelockController public timelock;
     SafeGuard public safeguard;
+    ProxyAdmin public proxyAdmin;
     SafeGuard implementation;
 
     /**
@@ -98,21 +99,17 @@ abstract contract BaseScript is Script {
         admin = abi.decode(vm.parseJson(json, ".admin"), (address));
         gnosisSafeAddress = abi.decode(vm.parseJson(json, ".gnosisSafeAddress"), (address));
         
-        address proxyAdmin = abi.decode(vm.parseJson(json, ".safeguard-proxyAdmin"), (address));
+        proxyAdmin = ProxyAdmin(abi.decode(vm.parseJson(json, ".safeguard-proxyAdmin"), (address)));
         address proxy = abi.decode(vm.parseJson(json, ".safeguard-proxy"), (address));
         address implementationAddr = abi.decode(vm.parseJson(json, ".safeguard-implementation"), (address));
+
+        // Load the timelock controller address
+        address timelockAddr = abi.decode(vm.parseJson(json, ".timelock"), (address));
+        timelock = TimelockController(payable(timelockAddr));
+    
         
         // Set the contract instances
         safeguard = SafeGuard(proxy);
         implementation = SafeGuard(implementationAddr);
-        
-        console.log("Loaded deployment:");
-        console.log("Name:", name);
-        console.log("Deployer:", deployer);
-        console.log("Admin:", admin);
-        console.log("Gnosis Safe:", gnosisSafeAddress);
-        console.log("SafeGuard Proxy:", proxy);
-        console.log("SafeGuard Implementation:", implementationAddr);
-        console.log("Proxy Admin:", proxyAdmin);
     }
 }
