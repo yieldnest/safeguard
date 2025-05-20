@@ -67,7 +67,7 @@ abstract contract BaseScript is Script {
         uint256 chainId = abi.decode(vm.parseJson(json, ".chainId"), (uint256));   
         // Validate chain ID
         require(chainId > 0, "Invalid chain ID");
-        require(chainId == block.chainid, "Chain ID mismatch: deployment is on the wrong network"); 
+        require(chainId == block.chainid, string.concat("Chain ID mismatch: expected ", vm.toString(chainId), ", got ", vm.toString(block.chainid)));
         console.log("Name:", name);
         console.log("Chain ID:", chainId);
         console.log("Gnosis Safe address:", gnosisSafeAddress);
@@ -84,6 +84,7 @@ abstract contract BaseScript is Script {
         
         vm.serializeAddress(root, "safeguard-proxyAdmin", ProxyUtils.getProxyAdmin(address(safeguard)));
         vm.serializeAddress(root, "safeguard-proxy", address(safeguard));
+        vm.serializeAddress(root, "timelock", address(timelock));
         
         string memory jsonOutput =
             vm.serializeAddress(root, "safeguard-implementation", address(implementation));
