@@ -19,7 +19,9 @@ import {BaseScript} from "./BaseScript.s.sol";
  * @title DeploySafeGuard
  * @notice Script to deploy the SafeGuard contract with a transparent proxy and timelock controller
  */
-contract DeploySafeGuard is BaseScript {
+abstract contract BaseDeploySafeGuard is BaseScript {
+
+    function setProcessorRules() internal virtual;
 
     function _deployTimelockController(
         address proposer,
@@ -58,7 +60,7 @@ contract DeploySafeGuard is BaseScript {
         // Prepare initialization data
         bytes memory initData = abi.encodeWithSelector(
             SafeGuard.initialize.selector,
-            admin
+            msg.sender
         );
         
         // Deploy transparent proxy with implementation and initialization data
@@ -70,15 +72,23 @@ contract DeploySafeGuard is BaseScript {
 
         safeguard = SafeGuard(address(proxy));
         
+        safeguard.grantRole(safeguard.DEFAULT_ADMIN_ROLE(), admin);
+        safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), msg.sender);
+
+        setProcessorRules();
+
+        // Revoke admin role from msg.sender and grant it to the admin
+        safeguard.revokeRole(safeguard.DEFAULT_ADMIN_ROLE(), msg.sender);
+
+
+        vm.stopBroadcast();
+
         // Log deployment information
         console.log("SafeGuard implementation deployed at:", address(implementation));
         console.log("TimelockController deployed at:", address(timelock));
         console.log("SafeGuard proxy deployed at:", address(proxy));
-        console.log("Admin address set to:", admin);
+        console.log("Admin address set to:", address(timelock));
         console.log("Timelock delay set to:", oneDay, "seconds (1 day)");
-        
-        vm.stopBroadcast();
-
         _saveDeployment();
     }
 }

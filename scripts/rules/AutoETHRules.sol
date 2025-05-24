@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.24;
 
-import {IVault, IValidator} from "src/interface/IVault.sol";
-import {SafeRules} from "./SafeRules.sol";
+import {IVault, IValidator} from "lib/yieldnest-vault/src/interface/IVault.sol";
+import {SafeRules} from "lib/yieldnest-vault/script/rules/SafeRules.sol";
 import {IAutopilotRouter} from "src/interfaces/tokemak/IAutopilotRouter.sol";
 
 library AutoETHRules {
@@ -191,8 +191,9 @@ library AutoETHRules {
         paramRules[2] =
             IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
 
+        // no rule for bool
         paramRules[3] =
-            IVault.ParamRule({paramType: IVault.ParamType.BOOL, isArray: false, allowList: new address[](0)});
+            IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
 
         IVault.FunctionRule memory rule =
             IVault.FunctionRule({isActive: true, paramRules: paramRules, validator: IValidator(address(0))});

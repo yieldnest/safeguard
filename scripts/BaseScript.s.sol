@@ -25,7 +25,7 @@ abstract contract BaseScript is Script {
     string public name;
     address public gnosisSafeAddress;
     address public admin;
-
+    address public processorManager;
     TimelockController public timelock;
     SafeGuard public safeguard;
     ProxyAdmin public proxyAdmin;
@@ -55,13 +55,15 @@ abstract contract BaseScript is Script {
         admin = abi.decode(vm.parseJson(json, ".admin"), (address));
         // Parse the name from the input file
         name = abi.decode(vm.parseJson(json, ".name"), (string));
+
+        processorManager = abi.decode(vm.parseJson(json, ".processorManager"), (address));
         
         require(bytes(name).length > 0, "Invalid name");
      
         // Validate input
         require(gnosisSafeAddress != address(0), "Invalid Gnosis Safe address");
         require(admin != address(0), "Invalid admin address");
-        
+        require(processorManager != address(0), "Invalid processor manager address");
         console.log("Loaded input configuration:");
         // Parse chain ID from input file
         uint256 chainId = abi.decode(vm.parseJson(json, ".chainId"), (uint256));   
@@ -80,6 +82,7 @@ abstract contract BaseScript is Script {
         vm.serializeString(root, "name", name);
         vm.serializeAddress(root, "deployer", msg.sender);
         vm.serializeAddress(root, "admin", admin);
+        vm.serializeAddress(root, "processorManager", processorManager);
         vm.serializeAddress(root, "gnosisSafeAddress", gnosisSafeAddress);
         
         vm.serializeAddress(root, "safeguard-proxyAdmin", ProxyUtils.getProxyAdmin(address(safeguard)));
