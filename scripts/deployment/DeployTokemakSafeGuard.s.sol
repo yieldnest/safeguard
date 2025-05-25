@@ -15,10 +15,9 @@ import {IVault} from "lib/yieldnest-vault/src/interface/IVault.sol";
 contract DeployTokemakSafeGuard is BaseDeploySafeGuard {
 
     // Tokemak contract addresses (these would be set based on the network)
-    address constant AUTOETH_VAULT = 0x1234567890123456789012345678901234567890; // Replace with actual address
-    address constant AUTOETH_TOKEN = 0x2345678901234567890123456789012345678901; // Replace with actual address
-    address constant AUTOETH_REWARDER = 0x3456789012345678901234567890123456789012; // Replace with actual address
-    address constant AUTOPILOT_ROUTER = 0x4567890123456789012345678901234567890123; // Replace with actual address
+    address constant AUTOETH_TOKEN = 0x0A2b94F6871c1D7A32Fe58E1ab5e6deA2f114E56;
+    address constant AUTOETH_REWARDER = 0x60882D6f70857606Cdd37729ccCe882015d1755E;
+    address constant AUTOPILOT_ROUTER = 0x37dD409f5e98aB4f151F4259Ea0CC13e97e8aE21;
 
     // TODO: set AccountingModule address 
     address constant ACCOUNTING_MODULE = address(0);
@@ -31,27 +30,32 @@ contract DeployTokemakSafeGuard is BaseDeploySafeGuard {
         // Create array to hold all rule parameters
         SafeRules.RuleParams[] memory rules = new SafeRules.RuleParams[](4);
 
-        // Rule 1: Allow approval of AutoETH token to Autopilot Router
-        rules[0] = BaseRules.getApprovalRule(MC.WETH, ACCOUNTING_MODULE);
-        console.log("Added approval rule for AutoETH token to Autopilot Router");
+        {
+            // Rule 1: Allow approval of WETH to multiple contracts
+            address[] memory spenders = new address[](2);
+            spenders[0] = AUTOPILOT_ROUTER;
+            spenders[1] = ACCOUNTING_MODULE;
+            rules[0] = BaseRules.getApprovalRule(MC.WETH, spenders);
+        }
+
+        console.log("Added approval rule for WETH to Autopilot Router and Accounting Module");
 
         // Rule 2: Allow staking vault tokens
-        rules[1] = AutoETHRules.getStakeVaultTokenRule(AUTOETH_VAULT, AUTOETH_TOKEN);
+        rules[1] = AutoETHRules.getStakeVaultTokenRule(AUTOPILOT_ROUTER, AUTOETH_TOKEN);
         console.log("Added stake vault token rule for AutoETH");
 
         // Rule 3: Allow withdrawing vault tokens
-        rules[2] = AutoETHRules.getWithdrawVaultTokenRule(AUTOETH_VAULT, AUTOETH_TOKEN, AUTOETH_REWARDER);
+        rules[2] = AutoETHRules.getWithdrawVaultTokenRule(AUTOPILOT_ROUTER, AUTOETH_TOKEN, AUTOETH_REWARDER);
         console.log("Added withdraw vault token rule for AutoETH");
 
         // Rule 4: Allow claiming autopool rewards
         rules[3] = AutoETHRules.getClaimAutopoolRewardsRule(
             AUTOPILOT_ROUTER,
-            AUTOETH_VAULT,
+            AUTOETH_TOKEN,
             AUTOETH_REWARDER,
             gnosisSafeAddress
         );
         console.log("Added claim autopool rewards rule");
-
 
         {
             // Set all rules in the SafeGuard contract
