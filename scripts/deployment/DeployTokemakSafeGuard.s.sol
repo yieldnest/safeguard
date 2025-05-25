@@ -28,7 +28,7 @@ contract DeployTokemakSafeGuard is BaseDeploySafeGuard {
         console.log("Setting up Tokemak AutoETH processor rules...");
 
         // Create array to hold all rule parameters
-        SafeRules.RuleParams[] memory rules = new SafeRules.RuleParams[](4);
+        SafeRules.RuleParams[] memory rules = new SafeRules.RuleParams[](5);
 
         {
             // Rule 1: Allow approval of WETH to multiple contracts
@@ -56,6 +56,10 @@ contract DeployTokemakSafeGuard is BaseDeploySafeGuard {
             gnosisSafeAddress
         );
         console.log("Added claim autopool rewards rule");
+
+        // Rule 5: Allow approval of AutoETH token to rewarder
+        rules[4] = BaseRules.getApprovalRule(AUTOETH_TOKEN, AUTOETH_REWARDER);
+        console.log("Added approval rule for AutoETH token to rewarder");
 
         {
             // Set all rules in the SafeGuard contract
