@@ -8,17 +8,9 @@ import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.s
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {ProxyUtils} from "lib/yieldnest-vault/script/ProxyUtils.sol";
 
-
-
- // To run this script:
- // forge script scripts/DeploySafeGuard.s.sol --sig "run(string calldata)" \
- // ${path} --rpc-url https://rpc.ankr.com/eth_holesky \
-// --account ${deployerAccountName} --sender ${deployer} \
-// --broadcast --etherscan-api-key ${api} --verify
-
 /**
- * @title DeploySafeGuard
- * @notice Script to deploy the SafeGuard contract with a transparent proxy and timelock controller
+ * @title BaseScript
+ * @notice Base script for deploying 
  */
 abstract contract BaseScript is Script {
 
@@ -30,6 +22,7 @@ abstract contract BaseScript is Script {
     SafeGuard public safeguard;
     ProxyAdmin public proxyAdmin;
     SafeGuard implementation;
+    address public deployer;
 
     /**
      * @notice Returns the file path for saving deployment information
@@ -99,7 +92,7 @@ abstract contract BaseScript is Script {
         string memory json = vm.readFile(_deploymentFilePath());
         // Parse the deployment data
         name = abi.decode(vm.parseJson(json, ".name"), (string));
-        address deployer = abi.decode(vm.parseJson(json, ".deployer"), (address));
+        deployer = abi.decode(vm.parseJson(json, ".deployer"), (address));
         admin = abi.decode(vm.parseJson(json, ".admin"), (address));
         gnosisSafeAddress = abi.decode(vm.parseJson(json, ".gnosisSafeAddress"), (address));
         

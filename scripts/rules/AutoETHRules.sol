@@ -92,7 +92,7 @@ library AutoETHRules {
         return SafeRules.RuleParams({contractAddress: contractAddress, funcSig: funcSig, rule: rule});
     }
 
-    function getAutopilotApproveRule(address contractAddress, address token, address to)
+    function getAutopilotApproveRule(address contractAddress, address[] memory tokenAllowList, address[] memory toAllowList)
         internal
         pure
         returns (SafeRules.RuleParams memory)
@@ -101,12 +101,8 @@ library AutoETHRules {
 
         IVault.ParamRule[] memory paramRules = new IVault.ParamRule[](3);
 
-        address[] memory tokenAllowList = new address[](1);
-        tokenAllowList[0] = token;
         paramRules[0] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: tokenAllowList});
 
-        address[] memory toAllowList = new address[](1);
-        toAllowList[0] = to;
         paramRules[1] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: toAllowList});
 
         paramRules[2] =
@@ -163,6 +159,48 @@ library AutoETHRules {
         // no rule for bool
         paramRules[3] =
             IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
+
+        IVault.FunctionRule memory rule =
+            IVault.FunctionRule({isActive: true, paramRules: paramRules, validator: IValidator(address(0))});
+
+        return SafeRules.RuleParams({contractAddress: contractAddress, funcSig: funcSig, rule: rule});
+    }
+
+    function getPullTokenRuleForWETH(address contractAddress, address router, address token) internal pure returns (SafeRules.RuleParams memory) {
+        bytes4 funcSig = bytes4(keccak256("pullToken(address,uint256,address)"));
+
+        IVault.ParamRule[] memory paramRules = new IVault.ParamRule[](3);
+        
+        address[] memory tokenAllowList = new address[](1);
+        tokenAllowList[0] = token;
+        paramRules[0] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: tokenAllowList});
+
+        paramRules[1] = IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
+
+        address[] memory destinationAllowList = new address[](1);
+        destinationAllowList[0] = router;
+        paramRules[2] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: destinationAllowList});
+
+        IVault.FunctionRule memory rule =
+            IVault.FunctionRule({isActive: true, paramRules: paramRules, validator: IValidator(address(0))});
+
+        return SafeRules.RuleParams({contractAddress: contractAddress, funcSig: funcSig, rule: rule});
+    }
+
+    function getPullTokenRuleForAutoETH(address contractAddress, address router, address token) internal pure returns (SafeRules.RuleParams memory) {
+        bytes4 funcSig = bytes4(keccak256("pullToken(address,uint256,address)"));
+
+        IVault.ParamRule[] memory paramRules = new IVault.ParamRule[](3);
+        
+        address[] memory tokenAllowList = new address[](1);
+        tokenAllowList[0] = token;
+        paramRules[0] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: tokenAllowList});
+
+        paramRules[1] = IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
+
+        address[] memory destinationAllowList = new address[](1);
+        destinationAllowList[0] = router;
+        paramRules[2] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: destinationAllowList});
 
         IVault.FunctionRule memory rule =
             IVault.FunctionRule({isActive: true, paramRules: paramRules, validator: IValidator(address(0))});

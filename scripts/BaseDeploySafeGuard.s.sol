@@ -9,15 +9,8 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {ProxyUtils} from "lib/yieldnest-vault/script/ProxyUtils.sol";
 import {BaseScript} from "./BaseScript.s.sol";
 
-
- // To run this script:
- // forge script scripts/DeploySafeGuard.s.sol --sig "run(string calldata)" \
- // ${path} --rpc-url https://rpc.ankr.com/eth_holesky \
-// --account ${deployerAccountName} --sender ${deployer} \
-// --broadcast --etherscan-api-key ${api} --verify
 /**
- * @title DeploySafeGuard
- * @notice Script to deploy the SafeGuard contract with a transparent proxy and timelock controller
+ * @title BaseDeploySafeGuard
  */
 abstract contract BaseDeploySafeGuard is BaseScript {
 
@@ -73,13 +66,14 @@ abstract contract BaseDeploySafeGuard is BaseScript {
         safeguard = SafeGuard(address(proxy));
         
         safeguard.grantRole(safeguard.DEFAULT_ADMIN_ROLE(), admin);
+        safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), admin);
         safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), msg.sender);
 
         setProcessorRules();
 
         // Revoke admin role from msg.sender and grant it to the admin
+        safeguard.revokeRole(safeguard.PROCESSOR_MANAGER_ROLE(), msg.sender);
         safeguard.revokeRole(safeguard.DEFAULT_ADMIN_ROLE(), msg.sender);
-
 
         vm.stopBroadcast();
 

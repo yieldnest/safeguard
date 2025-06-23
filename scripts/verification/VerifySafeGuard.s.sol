@@ -13,13 +13,11 @@ import {ProxyUtils} from "lib/yieldnest-vault/script/ProxyUtils.sol";
 
 
  // To run this script:
- // forge script scripts/DeploySafeGuard.s.sol --sig "run(string calldata)" \
- // ${path} --rpc-url https://rpc.ankr.com/eth_holesky \
-// --account ${deployerAccountName} --sender ${deployer} \
-// --broadcast --etherscan-api-key ${api} --verify
+ // forge script scripts/verification/VerifySafeGuard.s.sol --sig "run(string)" \
+ // ${path} --rpc-url <RPC_URL> 
 /**
- * @title DeploySafeGuard
- * @notice Script to deploy the SafeGuard contract with a transparent proxy and timelock controller
+ * @title VerifySafeGuard
+ * @notice Script to verify the SafeGuard contract
  */
 contract VerifySafeGuard is BaseScript, Test {
 
@@ -34,7 +32,11 @@ contract VerifySafeGuard is BaseScript, Test {
         assertEq(ProxyUtils.getImplementation(address(safeguard)), address(implementation), "Implementation is not set correctly");
 
         // Assert that the admin has DEFAULT_ADMIN_ROLE
-        assertTrue(safeguard.hasRole( safeguard.DEFAULT_ADMIN_ROLE(), admin), "Admin does not have DEFAULT_ADMIN_ROLE");
+        assertTrue(safeguard.hasRole(safeguard.DEFAULT_ADMIN_ROLE(), admin), "Admin does not have DEFAULT_ADMIN_ROLE");
+        assertTrue(safeguard.hasRole(safeguard.PROCESSOR_MANAGER_ROLE(), admin), "Admin does not have PROCESSOR_MANAGER_ROLE");
+
+        assertFalse(safeguard.hasRole(safeguard.PROCESSOR_MANAGER_ROLE(), deployer), "Deployer has PROCESSOR_MANAGER_ROLE");
+        assertFalse(safeguard.hasRole(safeguard.DEFAULT_ADMIN_ROLE(), deployer), "Deployer has DEFAULT_ADMIN_ROLE");
         
         console.log("Verification successful: Admin has DEFAULT_ADMIN_ROLE");
 
