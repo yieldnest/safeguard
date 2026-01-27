@@ -375,8 +375,7 @@ contract GnosisSafeTest is Test {
 
     function test_RevertWhenRemovingOwner() public {
         // user is the sole owner; prevOwner is SENTINEL (0x1) for the first entry in the linked list
-        bytes memory removeOwnerData =
-            abi.encodeWithSelector(IOwnerManager.removeOwner.selector, address(0x1), user, 1);
+        bytes memory removeOwnerData = abi.encodeWithSelector(IOwnerManager.removeOwner.selector, address(0x1), user, 1);
 
         executeTransaction(
             address(safe),

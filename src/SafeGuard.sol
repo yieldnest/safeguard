@@ -14,6 +14,9 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
+    bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
+    bool public checkTransactionEnabled;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -28,6 +31,8 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
         // Grant the admin role to the deployer
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+
+        checkTransactionEnabled = true;
     }
 
     /// TransactionGuard ///
@@ -49,6 +54,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         bytes memory, /* signatures */
         address /* executor */
     ) external view override {
+        if (!checkTransactionEnabled) return;
         // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
         SafeGuard(address(this)).validateCall(to, value, data);
     }
@@ -82,8 +88,13 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
     /// VautLib Guard Rules ///
 
-    // Role identifier for processor manager
-    bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
+    /**
+     * @notice Enables or disables the transaction check.
+     * @param enabled Whether the transaction check should be enabled.
+     */
+    function setCheckTransactionEnabled(bool enabled) public onlyRole(PROCESSOR_MANAGER_ROLE) {
+        checkTransactionEnabled = enabled;
+    }
 
     /**
      * @notice Validates a transaction call against the guard rules
