@@ -25,6 +25,7 @@ import {IGuardManager} from "lib/safe-smart-account/contracts/interfaces/IGuardM
 import {WETH9} from "lib/yieldnest-vault/test/unit/mocks/MockWETH.sol";
 import {IWETH} from "lib/yieldnest-vault/test/interface/external/ethereum/IWETH.sol";
 import {IOwnerManager} from "lib/safe-smart-account/contracts/interfaces/IOwnerManager.sol";
+import {IAccessControl} from "lib/openzeppelin-contracts/contracts/access/IAccessControl.sol";
 
 contract GnosisSafeTest is Test {
     SafeGuard implementation;
@@ -554,5 +555,139 @@ contract GnosisSafeTest is Test {
         );
 
         assertFalse(safe.isOwner(anotherOwner), "Should be blocked after re-enabling check");
+    }
+
+    // --- Rule management tests ---
+
+    function test_DeactivateRuleThenBlocks() public {
+        // Approve rule is active from setUp — verify it works
+        uint256 mintAmount = 1000e18;
+        vm.prank(address(safe));
+        mockToken.mint(mintAmount);
+
+        bytes memory approveData = abi.encodeWithSelector(IERC20.approve.selector, address(mockVault), 100e18);
+        bool success = executeTransaction(address(mockToken), 0, approveData, Enum.Operation.Call);
+        assertTrue(success, "Approve should succeed with active rule");
+
+        // Deactivate the approve rule by overwriting it with isActive=false
+        vm.startPrank(processorManager);
+        IVault.ParamRule[] memory paramRules = new IVault.ParamRule[](2);
+        address[] memory allowList = new address[](1);
+        allowList[0] = address(mockVault);
+        paramRules[0] = IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: allowList});
+        paramRules[1] =
+            IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
+
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](1);
+        ruleParams[0] = SafeRules.RuleParams({
+            contractAddress: address(mockToken),
+            funcSig: IERC20.approve.selector,
+            rule: IVault.FunctionRule({isActive: false, paramRules: paramRules, validator: IValidator(address(0))})
+        });
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+
+        // Now the same approve should be blocked
+        executeTransaction(
+            address(mockToken),
+            0,
+            approveData,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(Guard.RuleNotActive.selector, address(mockToken), IERC20.approve.selector)
+        );
+    }
+
+    function test_UpdateAllowlistEnforcesNewList() public {
+        // setUp has deposit rule allowing address(safe) as receiver
+        uint256 mintAmount = 1000e18;
+        vm.prank(address(safe));
+        mockToken.mint(mintAmount);
+
+        // Approve vault
+        bytes memory approveData = abi.encodeWithSelector(IERC20.approve.selector, address(mockVault), mintAmount);
+        executeTransaction(address(mockToken), 0, approveData, Enum.Operation.Call);
+
+        // Deposit to safe succeeds (allowed by setUp rule)
+        bytes memory depositData = abi.encodeWithSelector(IERC4626.deposit.selector, 100e18, address(safe));
+        bool success = executeTransaction(address(mockVault), 0, depositData, Enum.Operation.Call);
+        assertTrue(success, "Deposit to safe should succeed");
+
+        // Update the deposit rule to only allow a different receiver
+        address newReceiver = makeAddr("newReceiver");
+        vm.startPrank(processorManager);
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](1);
+        ruleParams[0] = BaseRules.getDepositRule(address(mockVault), newReceiver);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+
+        // Now deposit to safe should be blocked (no longer in allowlist)
+        bytes memory depositData2 = abi.encodeWithSelector(IERC4626.deposit.selector, 100e18, address(safe));
+        executeTransaction(
+            address(mockVault),
+            0,
+            depositData2,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(Guard.AddressNotInAllowlist.selector, address(safe))
+        );
+    }
+
+    // --- Access control in integration context ---
+
+    function test_RevertWhenSafeOwnerTriesToDisableCheck() public {
+        // Safe owner (user) should not be able to disable the check directly
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.PROCESSOR_MANAGER_ROLE()
+            )
+        );
+        vm.prank(user);
+        safeguard.setCheckTransactionEnabled(false);
+    }
+
+    function test_RevertWhenSafeOwnerTriesToSetRules() public {
+        address[] memory targets = new address[](1);
+        bytes4[] memory sigs = new bytes4[](1);
+        IVault.FunctionRule[] memory rules = new IVault.FunctionRule[](1);
+        targets[0] = address(0x1);
+        sigs[0] = bytes4(0xdeadbeef);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.PROCESSOR_MANAGER_ROLE()
+            )
+        );
+        vm.prank(user);
+        safeguard.setProcessorRules(targets, sigs, rules);
+    }
+
+    // --- DelegateCall not checked ---
+
+    function test_DelegateCallNotCheckedByGuard() public {
+        // The guard ignores the operation parameter in checkTransaction, so it validates
+        // delegatecalls the same way as regular calls — only checking target + funcSig.
+        // A delegatecall to mockToken with an active approve rule passes the guard,
+        // even though delegatecall executes in the Safe's context.
+        bytes memory approveData = abi.encodeWithSelector(IERC20.approve.selector, address(mockVault), 100e18);
+
+        // This passes the guard because approve rule is active for mockToken,
+        // but it executes as delegatecall — the guard doesn't distinguish.
+        bool success = executeTransaction(address(mockToken), 0, approveData, Enum.Operation.DelegateCall);
+        assertTrue(success, "DelegateCall should pass the guard check since operation is not validated");
+    }
+
+    // --- Multiple rules set and queried correctly ---
+
+    function test_GetProcessorRuleReturnsCorrectData() public view {
+        // Verify rules set in setUp are retrievable and correct
+        IVault.FunctionRule memory approveRule = safeguard.getProcessorRule(address(mockToken), IERC20.approve.selector);
+        assertTrue(approveRule.isActive, "Approve rule should be active");
+        assertEq(approveRule.paramRules.length, 2, "Approve rule should have 2 param rules");
+        assertEq(approveRule.paramRules[0].allowList.length, 1, "First param should have 1 allowed address");
+        assertEq(approveRule.paramRules[0].allowList[0], address(mockVault), "Allowed spender should be mockVault");
+
+        IVault.FunctionRule memory depositRule =
+            safeguard.getProcessorRule(address(mockVault), IERC4626.deposit.selector);
+        assertTrue(depositRule.isActive, "Deposit rule should be active");
+        assertEq(depositRule.paramRules.length, 2, "Deposit rule should have 2 param rules");
     }
 }
