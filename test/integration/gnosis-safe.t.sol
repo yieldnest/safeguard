@@ -436,4 +436,122 @@ contract GnosisSafeTest is Test {
             abi.encodeWithSelector(Guard.RuleNotActive.selector, address(safe), IGuardManager.setGuard.selector)
         );
     }
+
+    // --- Tests showing that disabling checkTransaction allows all Safe operations ---
+
+    function _disableCheck() internal {
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+    }
+
+    function _enableCheck() internal {
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(true);
+    }
+
+    function test_AddOwnerWhenCheckDisabled() public {
+        address newOwner = makeAddr("newOwner");
+        _disableCheck();
+
+        bytes memory data = abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, newOwner, threshold);
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+
+        assertTrue(success, "addOwnerWithThreshold should succeed");
+        assertTrue(safe.isOwner(newOwner), "New owner should have been added");
+    }
+
+    function test_RemoveOwnerWhenCheckDisabled() public {
+        // First add a second owner so we can remove the original
+        address newOwner = makeAddr("newOwner");
+        _disableCheck();
+
+        bytes memory addData = abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, newOwner, threshold);
+        executeTransaction(address(safe), 0, addData, Enum.Operation.Call);
+        assertTrue(safe.isOwner(newOwner), "New owner should have been added");
+
+        // Now remove the new owner; new owner was inserted at the head, so prevOwner is SENTINEL
+        bytes memory removeData =
+            abi.encodeWithSelector(IOwnerManager.removeOwner.selector, address(0x1), newOwner, threshold);
+        bool success = executeTransaction(address(safe), 0, removeData, Enum.Operation.Call);
+
+        assertTrue(success, "removeOwner should succeed");
+        assertFalse(safe.isOwner(newOwner), "Owner should have been removed");
+    }
+
+    function test_SwapOwnerWhenCheckDisabled() public {
+        address newOwner = makeAddr("newOwner");
+        _disableCheck();
+
+        bytes memory data = abi.encodeWithSelector(IOwnerManager.swapOwner.selector, address(0x1), user, newOwner);
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+
+        assertTrue(success, "swapOwner should succeed");
+        assertFalse(safe.isOwner(user), "Old owner should have been removed");
+        assertTrue(safe.isOwner(newOwner), "New owner should have been added");
+    }
+
+    function test_ChangeThresholdWhenCheckDisabled() public {
+        // Add a second owner first so threshold 2 is valid
+        address newOwner = makeAddr("newOwner");
+        _disableCheck();
+
+        bytes memory addData = abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, newOwner, threshold);
+        executeTransaction(address(safe), 0, addData, Enum.Operation.Call);
+
+        bytes memory data = abi.encodeWithSelector(IOwnerManager.changeThreshold.selector, 2);
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+
+        assertTrue(success, "changeThreshold should succeed");
+        assertEq(safe.getThreshold(), 2, "Threshold should have been changed to 2");
+    }
+
+    function test_RemoveGuardWhenCheckDisabled() public {
+        _disableCheck();
+
+        bytes memory data = abi.encodeWithSelector(IGuardManager.setGuard.selector, address(0));
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+
+        assertTrue(success, "setGuard(0) should succeed");
+    }
+
+    function test_ETHTransferWhenCheckDisabled() public {
+        address recipient = makeAddr("recipient");
+        vm.deal(address(safe), 1 ether);
+        _disableCheck();
+
+        bool success = executeTransaction(recipient, 1 ether, bytes(""), Enum.Operation.Call);
+
+        assertTrue(success, "ETH transfer should succeed");
+        assertEq(recipient.balance, 1 ether, "Recipient should have received ETH");
+        assertEq(address(safe).balance, 0, "Safe should have no ETH left");
+    }
+
+    function test_ReenableCheckAfterDisable() public {
+        // Disable, do an admin op, re-enable, verify guard is enforced again
+        address newOwner = makeAddr("newOwner");
+        _disableCheck();
+
+        bytes memory addData = abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, newOwner, threshold);
+        bool success = executeTransaction(address(safe), 0, addData, Enum.Operation.Call);
+        assertTrue(success, "addOwner should succeed while disabled");
+
+        _enableCheck();
+
+        // Now the guard should block again
+        address anotherOwner = makeAddr("anotherOwner");
+        bytes memory addData2 =
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, anotherOwner, threshold);
+
+        executeTransaction(
+            address(safe),
+            0,
+            addData2,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(
+                Guard.RuleNotActive.selector, address(safe), IOwnerManager.addOwnerWithThreshold.selector
+            )
+        );
+
+        assertFalse(safe.isOwner(anotherOwner), "Should be blocked after re-enabling check");
+    }
 }
