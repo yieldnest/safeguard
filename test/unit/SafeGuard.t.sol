@@ -356,4 +356,197 @@ contract SafeGuardTest is Test {
         assertEq(rule.paramRules.length, 0, "Unset rule should have no param rules");
         assertEq(address(rule.validator), address(0), "Unset rule should have no validator");
     }
+
+    // --- Event emission tests ---
+
+    function test_setProcessorRules_emitsSetProcessorRuleEvents() public {
+        address mockToken = address(0x5678);
+        address mockContract = address(0x1234);
+
+        SafeRules.RuleParams memory approvalRule = BaseRules.getApprovalRule(mockToken, address(this));
+        SafeRules.RuleParams memory depositRule = BaseRules.getDepositRule(mockContract, user);
+
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](2);
+        ruleParams[0] = approvalRule;
+        ruleParams[1] = depositRule;
+
+        vm.startPrank(processorManager);
+        vm.expectEmit(true, false, false, true);
+        emit IVault.SetProcessorRule(approvalRule.contractAddress, approvalRule.funcSig, approvalRule.rule);
+        vm.expectEmit(true, false, false, true);
+        emit IVault.SetProcessorRule(depositRule.contractAddress, depositRule.funcSig, depositRule.rule);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+    }
+
+    // --- checkTransaction with unknown selector ---
+
+    function test_checkTransaction_revertsOnUnknownSelector() public {
+        // No rules set for this target/selector combination at all
+        bytes memory txData = abi.encodeWithSelector(bytes4(0xcafebabe), uint256(42));
+
+        vm.expectRevert(abi.encodeWithSelector(Guard.RuleNotActive.selector, address(0xbeef), bytes4(0xcafebabe)));
+        safeguard.checkTransaction(
+            address(0xbeef),
+            0,
+            txData,
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            payable(address(0)),
+            bytes(""),
+            address(this)
+        );
+    }
+
+    // --- value parameter not validated ---
+
+    function test_checkTransaction_valueNotValidated() public {
+        // Set up an active rule
+        address mockContract = address(0x1234);
+        SafeRules.RuleParams memory depositRule = BaseRules.getDepositRule(mockContract, user);
+
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](1);
+        ruleParams[0] = depositRule;
+
+        vm.prank(processorManager);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+
+        // Call with arbitrary ETH value — should NOT revert because value is not validated
+        bytes memory txData = abi.encodeWithSelector(depositRule.funcSig, 1000, user);
+
+        safeguard.checkTransaction(
+            depositRule.contractAddress,
+            999 ether, // large value — not validated by guard
+            txData,
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            payable(address(0)),
+            bytes(""),
+            address(this)
+        );
+    }
+
+    // --- checkModuleTransaction is a no-op ---
+
+    function test_checkModuleTransaction_isNoOp() public view {
+        // checkModuleTransaction should never revert and always return bytes32(0)
+        bytes32 result = safeguard.checkModuleTransaction(
+            address(0xdead),
+            1 ether,
+            abi.encodeWithSelector(bytes4(0xdeadbeef), uint256(1)),
+            Enum.Operation.Call,
+            address(0xbeef)
+        );
+        assertEq(result, bytes32(0), "checkModuleTransaction should return bytes32(0)");
+    }
+
+    // --- checkAfterExecution and checkAfterModuleExecution are no-ops ---
+
+    function test_checkAfterExecution_doesNotRevert() public view {
+        safeguard.checkAfterExecution(bytes32(uint256(1)), true);
+        safeguard.checkAfterExecution(bytes32(uint256(1)), false);
+    }
+
+    function test_checkAfterModuleExecution_doesNotRevert() public view {
+        safeguard.checkAfterModuleExecution(bytes32(uint256(1)), true);
+        safeguard.checkAfterModuleExecution(bytes32(uint256(1)), false);
+    }
+
+    // --- Overwriting an active rule ---
+
+    function test_setProcessorRules_overwritesExistingRule() public {
+        address mockToken = address(0x5678);
+
+        // Set an initial approval rule
+        SafeRules.RuleParams memory approvalRule = BaseRules.getApprovalRule(mockToken, address(this));
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](1);
+        ruleParams[0] = approvalRule;
+
+        vm.prank(processorManager);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+
+        // Verify initial rule
+        IVault.FunctionRule memory rule = safeguard.getProcessorRule(mockToken, approvalRule.funcSig);
+        assertTrue(rule.isActive);
+        assertEq(rule.paramRules[0].allowList[0], address(this), "Initial allowlist should contain address(this)");
+
+        // Overwrite with a different allowlist
+        address newSpender = makeAddr("newSpender");
+        SafeRules.RuleParams memory newRule = BaseRules.getApprovalRule(mockToken, newSpender);
+        ruleParams[0] = newRule;
+
+        vm.prank(processorManager);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+
+        // Verify overwritten rule
+        IVault.FunctionRule memory updatedRule = safeguard.getProcessorRule(mockToken, approvalRule.funcSig);
+        assertTrue(updatedRule.isActive);
+        assertEq(updatedRule.paramRules[0].allowList[0], newSpender, "Allowlist should now contain newSpender");
+        assertEq(updatedRule.paramRules[0].allowList.length, 1, "Allowlist should have exactly 1 entry");
+    }
+
+    // --- Multiple rules on same target ---
+
+    function test_setProcessorRules_multipleRulesOnSameTarget() public {
+        address mockContract = address(0x1234);
+
+        // Set two different function rules for the same contract
+        SafeRules.RuleParams memory depositRule = BaseRules.getDepositRule(mockContract, user);
+        SafeRules.RuleParams memory approvalRule = BaseRules.getApprovalRule(mockContract, address(this));
+
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](2);
+        ruleParams[0] = depositRule;
+        ruleParams[1] = approvalRule;
+
+        vm.prank(processorManager);
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+
+        // Both rules should be independently retrievable
+        IVault.FunctionRule memory retrievedDeposit = safeguard.getProcessorRule(mockContract, depositRule.funcSig);
+        IVault.FunctionRule memory retrievedApproval = safeguard.getProcessorRule(mockContract, approvalRule.funcSig);
+
+        assertTrue(retrievedDeposit.isActive, "Deposit rule should be active");
+        assertTrue(retrievedApproval.isActive, "Approval rule should be active");
+
+        // Verify they have distinct param rules
+        assertEq(retrievedDeposit.paramRules[1].allowList[0], user, "Deposit receiver should be user");
+        assertEq(
+            retrievedApproval.paramRules[0].allowList[0], address(this), "Approval spender should be address(this)"
+        );
+    }
+
+    // --- Fuzz test: disabled flag bypasses all validation ---
+
+    function testFuzz_checkTransaction_skipsAllValidationWhenDisabled(
+        address target,
+        uint256 value,
+        bytes4 selector,
+        uint256 param
+    ) public {
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+
+        bytes memory txData = abi.encodeWithSelector(selector, param);
+
+        // Should never revert regardless of target, value, selector, or params
+        safeguard.checkTransaction(
+            target,
+            value,
+            txData,
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            payable(address(0)),
+            bytes(""),
+            address(this)
+        );
+    }
 }

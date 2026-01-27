@@ -675,6 +675,44 @@ contract GnosisSafeTest is Test {
         assertTrue(success, "DelegateCall should pass the guard check since operation is not validated");
     }
 
+    // --- ETH value sent alongside valid call ---
+
+    function test_ETHValuePassedAlongsideValidCall() public {
+        // The guard does not validate the `value` parameter.
+        // ETH can be sent alongside a valid function call without restriction.
+        WETH9 weth = new WETH9();
+        vm.deal(address(safe), 5 ether);
+
+        // Set up WETH deposit rule
+        vm.startPrank(processorManager);
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](1);
+        ruleParams[0] = BaseRules.getWethDepositRule(address(weth));
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+
+        // Send 3 ETH with WETH deposit — guard doesn't limit the amount
+        bytes memory depositData = abi.encodeWithSelector(IWETH.deposit.selector);
+        bool success = executeTransaction(address(weth), 3 ether, depositData, Enum.Operation.Call);
+
+        assertTrue(success, "Should succeed with arbitrary ETH value");
+        assertEq(weth.balanceOf(address(safe)), 3 ether, "Safe should hold 3 WETH");
+        assertEq(address(safe).balance, 2 ether, "Safe should have 2 ETH remaining");
+    }
+
+    // --- checkModuleTransaction no-op in integration ---
+
+    function test_CheckModuleTransactionIsNoOp() public view {
+        // Module transactions bypass the guard entirely — checkModuleTransaction always returns bytes32(0)
+        bytes32 result = safeguard.checkModuleTransaction(
+            address(safe),
+            1 ether,
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, address(0xdead), 1),
+            Enum.Operation.Call,
+            address(0xbeef)
+        );
+        assertEq(result, bytes32(0), "checkModuleTransaction should always return bytes32(0)");
+    }
+
     // --- Multiple rules set and queried correctly ---
 
     function test_GetProcessorRuleReturnsCorrectData() public view {
