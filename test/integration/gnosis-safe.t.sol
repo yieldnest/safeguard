@@ -373,6 +373,43 @@ contract GnosisSafeTest is Test {
         assertFalse(safe.isOwner(newOwner), "New owner should not have been added");
     }
 
+    function test_RevertWhenRemovingOwner() public {
+        // user is the sole owner; prevOwner is SENTINEL (0x1) for the first entry in the linked list
+        bytes memory removeOwnerData =
+            abi.encodeWithSelector(IOwnerManager.removeOwner.selector, address(0x1), user, 1);
+
+        executeTransaction(
+            address(safe),
+            0,
+            removeOwnerData,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(Guard.RuleNotActive.selector, address(safe), IOwnerManager.removeOwner.selector)
+        );
+
+        // Owner should still be present
+        assertTrue(safe.isOwner(user), "Owner should not have been removed");
+    }
+
+    function test_RevertWhenSwappingOwner() public {
+        address newOwner = makeAddr("newOwner");
+
+        // prevOwner is SENTINEL (0x1) for the first entry in the linked list
+        bytes memory swapOwnerData =
+            abi.encodeWithSelector(IOwnerManager.swapOwner.selector, address(0x1), user, newOwner);
+
+        executeTransaction(
+            address(safe),
+            0,
+            swapOwnerData,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(Guard.RuleNotActive.selector, address(safe), IOwnerManager.swapOwner.selector)
+        );
+
+        // Original owner should still be there, new one should not
+        assertTrue(safe.isOwner(user), "Original owner should still be present");
+        assertFalse(safe.isOwner(newOwner), "New owner should not have been added");
+    }
+
     function test_RevertWhenChangingThreshold() public {
         // Try to change threshold — self-call, no rule exists
         bytes memory changeThresholdData = abi.encodeWithSelector(IOwnerManager.changeThreshold.selector, 1);
@@ -384,6 +421,8 @@ contract GnosisSafeTest is Test {
             Enum.Operation.Call,
             abi.encodeWithSelector(Guard.RuleNotActive.selector, address(safe), IOwnerManager.changeThreshold.selector)
         );
+
+        assertEq(safe.getThreshold(), threshold, "Threshold should not have changed");
     }
 
     function test_RevertWhenRemovingGuard() public {
