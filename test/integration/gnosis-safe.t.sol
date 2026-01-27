@@ -24,6 +24,7 @@ import {Guard} from "lib/yieldnest-vault/src/module/Guard.sol";
 import {IGuardManager} from "lib/safe-smart-account/contracts/interfaces/IGuardManager.sol";
 import {WETH9} from "lib/yieldnest-vault/test/unit/mocks/MockWETH.sol";
 import {IWETH} from "lib/yieldnest-vault/test/interface/external/ethereum/IWETH.sol";
+import {IOwnerManager} from "lib/safe-smart-account/contracts/interfaces/IOwnerManager.sol";
 
 contract GnosisSafeTest is Test {
     SafeGuard implementation;
@@ -349,5 +350,52 @@ contract GnosisSafeTest is Test {
         assertTrue(success, "WETH withdraw (unwrap) failed");
         assertEq(weth.balanceOf(address(safe)), 0, "Safe should have no WETH after unwrap");
         assertEq(address(safe).balance, 2 ether, "Safe should have ETH back after unwrap");
+    }
+
+    function test_RevertWhenAddingOwner() public {
+        address newOwner = makeAddr("newOwner");
+
+        // Try to add a new owner — this is a self-call to the Safe, no rule exists for addOwnerWithThreshold
+        bytes memory addOwnerData =
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, newOwner, threshold);
+
+        executeTransaction(
+            address(safe),
+            0,
+            addOwnerData,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(
+                Guard.RuleNotActive.selector, address(safe), IOwnerManager.addOwnerWithThreshold.selector
+            )
+        );
+
+        // Owner should not have been added
+        assertFalse(safe.isOwner(newOwner), "New owner should not have been added");
+    }
+
+    function test_RevertWhenChangingThreshold() public {
+        // Try to change threshold — self-call, no rule exists
+        bytes memory changeThresholdData = abi.encodeWithSelector(IOwnerManager.changeThreshold.selector, 1);
+
+        executeTransaction(
+            address(safe),
+            0,
+            changeThresholdData,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(Guard.RuleNotActive.selector, address(safe), IOwnerManager.changeThreshold.selector)
+        );
+    }
+
+    function test_RevertWhenRemovingGuard() public {
+        // Try to remove the guard — self-call to setGuard(address(0)), no rule exists
+        bytes memory removeGuardData = abi.encodeWithSelector(IGuardManager.setGuard.selector, address(0));
+
+        executeTransaction(
+            address(safe),
+            0,
+            removeGuardData,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(Guard.RuleNotActive.selector, address(safe), IGuardManager.setGuard.selector)
+        );
     }
 }
