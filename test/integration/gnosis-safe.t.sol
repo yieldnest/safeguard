@@ -534,6 +534,7 @@ contract GnosisSafeTest is Test {
         bytes memory addData = abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, newOwner, threshold);
         bool success = executeTransaction(address(safe), 0, addData, Enum.Operation.Call);
         assertTrue(success, "addOwner should succeed while disabled");
+        assertTrue(safe.isOwner(newOwner), "New owner should have been added while disabled");
 
         _enableCheck();
 
