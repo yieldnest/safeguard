@@ -12,6 +12,11 @@ import {BaseRules} from "lib/yieldnest-vault/script/rules/BaseRules.sol";
 import {IValidator} from "lib/yieldnest-vault/src/interface/IValidator.sol";
 import {Enum} from "lib/safe-smart-account/contracts/libraries/Enum.sol";
 import {Guard} from "lib/yieldnest-vault/src/module/Guard.sol";
+import {ITransactionGuard} from "lib/safe-smart-account/contracts/base/GuardManager.sol";
+import {IModuleGuard} from "lib/safe-smart-account/contracts/base/ModuleManager.sol";
+import {IERC165} from "lib/safe-smart-account/contracts/interfaces/IERC165.sol";
+import {IAccessControl} from "lib/openzeppelin-contracts/contracts/access/IAccessControl.sol";
+import {Initializable} from "lib/openzeppelin-contracts-upgradeable/contracts/proxy/utils/Initializable.sol";
 
 contract SafeGuardTest is Test {
     SafeGuard implementation;
@@ -63,7 +68,11 @@ contract SafeGuardTest is Test {
         vm.startPrank(user);
 
         // Expect revert when caller doesn't have PROCESSOR_MANAGER_ROLE
-        vm.expectRevert();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.PROCESSOR_MANAGER_ROLE()
+            )
+        );
         safeguard.setProcessorRules(targets, functionSigs, rules);
 
         vm.stopPrank();
@@ -212,5 +221,139 @@ contract SafeGuardTest is Test {
             bytes(""), // signatures
             address(this) // executor
         );
+    }
+
+    // --- initialize tests ---
+
+    function test_initialize_setsCheckTransactionEnabled() public view {
+        assertTrue(safeguard.checkTransactionEnabled(), "checkTransactionEnabled should be true after initialize");
+    }
+
+    function test_initialize_setsAdminRole() public view {
+        assertTrue(
+            safeguard.hasRole(safeguard.DEFAULT_ADMIN_ROLE(), adminAddress), "Admin should have DEFAULT_ADMIN_ROLE"
+        );
+    }
+
+    function test_initialize_revertWhenCalledTwice() public {
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        safeguard.initialize(adminAddress);
+    }
+
+    function test_initialize_revertOnImplementation() public {
+        vm.expectRevert(Initializable.InvalidInitialization.selector);
+        implementation.initialize(adminAddress);
+    }
+
+    // --- setCheckTransactionEnabled tests ---
+
+    function test_setCheckTransactionEnabled_revertWhenCallerNotProcessorManager() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.PROCESSOR_MANAGER_ROLE()
+            )
+        );
+        vm.prank(user);
+        safeguard.setCheckTransactionEnabled(false);
+    }
+
+    function test_setCheckTransactionEnabled_succeeds() public {
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+        assertFalse(safeguard.checkTransactionEnabled(), "Should be disabled");
+
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(true);
+        assertTrue(safeguard.checkTransactionEnabled(), "Should be re-enabled");
+    }
+
+    // --- checkTransaction with disabled flag ---
+
+    function test_checkTransaction_skipsValidationWhenDisabled() public {
+        // Disable check
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+
+        // Call checkTransaction with a target that has no rules — should not revert
+        safeguard.checkTransaction(
+            address(0xdead),
+            0,
+            abi.encodeWithSelector(bytes4(0xdeadbeef), uint256(1)),
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            payable(address(0)),
+            bytes(""),
+            address(this)
+        );
+    }
+
+    function test_checkTransaction_skipsValidationWithEmptyDataWhenDisabled() public {
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+
+        // Empty data would normally revert due to data[:4] slice — should pass when disabled
+        safeguard.checkTransaction(
+            address(0xdead),
+            1 ether,
+            bytes(""),
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            payable(address(0)),
+            bytes(""),
+            address(this)
+        );
+    }
+
+    // --- supportsInterface tests ---
+
+    function test_supportsInterface_ITransactionGuard() public view {
+        assertTrue(safeguard.supportsInterface(type(ITransactionGuard).interfaceId));
+    }
+
+    function test_supportsInterface_IModuleGuard() public view {
+        assertTrue(safeguard.supportsInterface(type(IModuleGuard).interfaceId));
+    }
+
+    function test_supportsInterface_IERC165() public view {
+        assertTrue(safeguard.supportsInterface(type(IERC165).interfaceId));
+    }
+
+    function test_supportsInterface_IAccessControl() public view {
+        assertTrue(safeguard.supportsInterface(type(IAccessControl).interfaceId));
+    }
+
+    function test_supportsInterface_returnsFalseForUnknown() public view {
+        assertFalse(safeguard.supportsInterface(bytes4(0xffffffff)));
+    }
+
+    // --- setProcessorRules edge cases ---
+
+    function test_setProcessorRules_revertOnMismatchedArrayLengths() public {
+        address[] memory targets = new address[](2);
+        bytes4[] memory functionSigs = new bytes4[](1);
+        IVault.FunctionRule[] memory rules = new IVault.FunctionRule[](2);
+
+        targets[0] = address(0x1);
+        targets[1] = address(0x2);
+        functionSigs[0] = bytes4(0xdeadbeef);
+
+        vm.prank(processorManager);
+        vm.expectRevert(IVault.InvalidArray.selector);
+        safeguard.setProcessorRules(targets, functionSigs, rules);
+    }
+
+    // --- getProcessorRule for nonexistent rule ---
+
+    function test_getProcessorRule_returnsInactiveForUnsetRule() public view {
+        IVault.FunctionRule memory rule = safeguard.getProcessorRule(address(0xdead), bytes4(0xdeadbeef));
+        assertFalse(rule.isActive, "Unset rule should be inactive");
+        assertEq(rule.paramRules.length, 0, "Unset rule should have no param rules");
+        assertEq(address(rule.validator), address(0), "Unset rule should have no validator");
     }
 }
