@@ -22,6 +22,8 @@ import {IValidator} from "lib/yieldnest-vault/src/interface/IValidator.sol";
 import {BaseRules} from "lib/yieldnest-vault/script/rules/BaseRules.sol";
 import {Guard} from "lib/yieldnest-vault/src/module/Guard.sol";
 import {IGuardManager} from "lib/safe-smart-account/contracts/interfaces/IGuardManager.sol";
+import {WETH9} from "lib/yieldnest-vault/test/unit/mocks/MockWETH.sol";
+import {IWETH} from "lib/yieldnest-vault/test/interface/external/ethereum/IWETH.sol";
 
 contract GnosisSafeTest is Test {
     SafeGuard implementation;
@@ -256,5 +258,96 @@ contract GnosisSafeTest is Test {
         // Verify no tokens were transferred
         assertEq(mockToken.balanceOf(randomAddress), 0, "Random address should not receive any tokens");
         assertEq(mockToken.balanceOf(address(safe)), mintAmount, "Safe's token balance should remain unchanged");
+    }
+
+    function test_RevertWhenETHTransfer() public {
+        address recipient = makeAddr("recipient");
+
+        // Fund the Safe with ETH
+        vm.deal(address(safe), 1 ether);
+
+        // Try to send ETH with empty calldata — guard slices data[:4] which reverts on empty data
+        vm.startPrank(user);
+        bytes memory signature = abi.encodePacked(uint256(uint160(user)), uint256(0), uint8(1));
+
+        vm.expectRevert();
+        safe.execTransaction(
+            recipient,
+            1 ether,
+            bytes(""), // empty data — plain ETH transfer
+            Enum.Operation.Call,
+            0,
+            0,
+            0,
+            address(0),
+            payable(address(0)),
+            signature
+        );
+        vm.stopPrank();
+
+        // ETH should not have moved
+        assertEq(address(safe).balance, 1 ether, "Safe should still hold its ETH");
+        assertEq(recipient.balance, 0, "Recipient should have received nothing");
+    }
+
+    function test_WrapUnwrapAndTransferWETH() public {
+        WETH9 weth = new WETH9();
+        address recipient = makeAddr("recipient");
+        uint256 wrapAmount = 1 ether;
+
+        // Fund the Safe with ETH
+        vm.deal(address(safe), 3 ether);
+
+        // Set up rules: WETH deposit (wrap), WETH withdraw (unwrap), WETH transfer
+        vm.startPrank(processorManager);
+
+        SafeRules.RuleParams[] memory ruleParams = new SafeRules.RuleParams[](3);
+
+        // Rule for WETH.deposit() — wrap ETH
+        ruleParams[0] = BaseRules.getWethDepositRule(address(weth));
+
+        // Rule for WETH.withdraw(uint256) — unwrap WETH
+        ruleParams[1] = BaseRules.getWethWithdrawRule(address(weth));
+
+        // Rule for WETH.transfer(address,uint256) — transfer WETH to recipient
+        address[] memory transferAllowList = new address[](1);
+        transferAllowList[0] = recipient;
+        IVault.ParamRule[] memory transferParamRules = new IVault.ParamRule[](2);
+        transferParamRules[0] =
+            IVault.ParamRule({paramType: IVault.ParamType.ADDRESS, isArray: false, allowList: transferAllowList});
+        transferParamRules[1] =
+            IVault.ParamRule({paramType: IVault.ParamType.UINT256, isArray: false, allowList: new address[](0)});
+        ruleParams[2] = SafeRules.RuleParams({
+            contractAddress: address(weth),
+            funcSig: bytes4(keccak256("transfer(address,uint256)")),
+            rule: IVault.FunctionRule({isActive: true, paramRules: transferParamRules, validator: IValidator(address(0))})
+        });
+
+        SafeRules.setProcessorRules(IVault(address(safeguard)), ruleParams, true);
+        vm.stopPrank();
+
+        // 1. Wrap ETH → WETH via deposit()
+        bytes memory depositData = abi.encodeWithSelector(IWETH.deposit.selector);
+        bool success = executeTransaction(address(weth), wrapAmount, depositData, Enum.Operation.Call);
+        assertTrue(success, "WETH deposit (wrap) failed");
+        assertEq(weth.balanceOf(address(safe)), wrapAmount, "Safe should hold WETH after wrap");
+        assertEq(address(safe).balance, 3 ether - wrapAmount, "Safe ETH should decrease after wrap");
+
+        // 2. Transfer WETH to recipient
+        bytes memory transferData = abi.encodeWithSelector(IWETH.transfer.selector, recipient, wrapAmount);
+        success = executeTransaction(address(weth), 0, transferData, Enum.Operation.Call);
+        assertTrue(success, "WETH transfer failed");
+        assertEq(weth.balanceOf(recipient), wrapAmount, "Recipient should hold WETH");
+        assertEq(weth.balanceOf(address(safe)), 0, "Safe WETH balance should be zero");
+
+        // 3. Wrap more ETH then unwrap it back via withdraw()
+        success = executeTransaction(address(weth), wrapAmount, depositData, Enum.Operation.Call);
+        assertTrue(success, "Second WETH deposit (wrap) failed");
+
+        bytes memory withdrawData = abi.encodeWithSelector(IWETH.withdraw.selector, wrapAmount);
+        success = executeTransaction(address(weth), 0, withdrawData, Enum.Operation.Call);
+        assertTrue(success, "WETH withdraw (unwrap) failed");
+        assertEq(weth.balanceOf(address(safe)), 0, "Safe should have no WETH after unwrap");
+        assertEq(address(safe).balance, 2 ether, "Safe should have ETH back after unwrap");
     }
 }
