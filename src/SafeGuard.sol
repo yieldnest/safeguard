@@ -98,19 +98,6 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
     /**
      * @notice Sets the processor rule for a given contract address and function signature.
-     * @param target The address of the target contract.
-     * @param functionSig The function signature.
-     * @param rule The function rule.
-     */
-    function _setProcessorRule(address target, bytes4 functionSig, IVault.FunctionRule calldata rule)
-        internal
-        virtual
-    {
-        VaultLib.setProcessorRule(target, functionSig, rule);
-    }
-
-    /**
-     * @notice Sets the processor rule for a given contract address and function signature.
      * @dev This function does not check for duplicate rules.
      * @param target The address of the target contract.
      * @param functionSig The function signature.
@@ -121,14 +108,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         bytes4[] calldata functionSig,
         IVault.FunctionRule[] calldata rule
     ) public virtual onlyRole(PROCESSOR_MANAGER_ROLE) {
-        uint256 targetLength = target.length;
-        if (targetLength != functionSig.length || targetLength != rule.length) {
-            revert IVault.InvalidArray();
-        }
-
-        for (uint256 i = 0; i < targetLength; i++) {
-            _setProcessorRule(target[i], functionSig[i], rule[i]);
-        }
+        VaultLib.setProcessorRules(target, functionSig, rule);
     }
 
     /**
