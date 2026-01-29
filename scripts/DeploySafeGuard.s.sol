@@ -9,85 +9,65 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {ProxyUtils} from "lib/yieldnest-vault/script/ProxyUtils.sol";
 import {BaseScript} from "./BaseScript.s.sol";
 
-
 // To run this script:
-// forge script scripts/DeploySafeGuard.s.sol --sig "run(string calldata)" \
-// "my-deployment-name" --rpc-url https://rpc.ankr.com/eth_holesky \
+// forge script scripts/DeploySafeGuard.s.sol --sig "run(string,address)" \
+// "my-deployment" 0xAdminAddress --rpc-url ${RPC_URL} \
 // --account ${deployerAccountName} --sender ${deployer} \
 // --broadcast --etherscan-api-key ${api} --verify
 /**
  * @title DeploySafeGuard
  * @notice Script to deploy the SafeGuard contract with a transparent proxy and timelock controller
- * @dev Takes a name as CLI parameter, deploys as TransparentUpgradeableProxy,
+ * @dev Takes name and admin as CLI parameters, deploys as TransparentUpgradeableProxy,
  *      grants PROCESSOR_MANAGER_ROLE to admin, and saves deployment to JSON
  */
 contract DeploySafeGuard is BaseScript {
 
-    function _deployTimelockController(
-        address proposer,
-        address executor,
-        address _admin,
-        uint256 minDelay
-    ) internal virtual returns (TimelockController) {
-        address[] memory proposers = new address[](1);
-        proposers[0] = proposer;
-
-        address[] memory executors = new address[](1);
-        executors[0] = executor;
-
-        return new TimelockController(minDelay, proposers, executors, _admin);
-    }
-
     /**
-     * @notice Deploy SafeGuard with a name parameter
-     * @param _name The name for this deployment (used in output filename)
+     * @notice Deploy SafeGuard
+     * @param _name The name for this deployment (used in output filename: deployments/{name}-{chainId}.json)
+     * @param _admin The admin address that receives DEFAULT_ADMIN_ROLE and PROCESSOR_MANAGER_ROLE
      */
-    function run(string calldata _name) external {
-        _loadInputByName(_name);
+    function run(string calldata _name, address _admin) external {
+        require(bytes(_name).length > 0, "Invalid name");
+        require(_admin != address(0), "Invalid admin address");
 
-        // Start broadcasting transactions
+        name = _name;
+        admin = _admin;
+
         vm.startBroadcast();
 
-        // Deploy implementation contract
+        // Deploy implementation
         implementation = new SafeGuard();
 
         // Deploy TimelockController with 1 day delay
-        uint256 oneDay = 1 days;
+        address[] memory proposers = new address[](1);
+        proposers[0] = _admin;
+        address[] memory executors = new address[](1);
+        executors[0] = _admin;
+        timelock = new TimelockController(1 days, proposers, executors, _admin);
 
-        timelock = _deployTimelockController(
-            admin,
-            admin,
-            admin,
-            oneDay
-        );
-
-        // Prepare initialization data
-        bytes memory initData = abi.encodeWithSelector(
-            SafeGuard.initialize.selector,
-            admin
-        );
-
-        // Deploy transparent proxy with implementation and initialization data
+        // Deploy proxy with initialization
+        bytes memory initData = abi.encodeWithSelector(SafeGuard.initialize.selector, _admin);
         TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
             address(implementation),
             address(timelock),
             initData
         );
-
         safeguard = SafeGuard(address(proxy));
 
         // Grant PROCESSOR_MANAGER_ROLE to admin
-        safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), admin);
-
-        // Log deployment information
-        console.log("SafeGuard implementation deployed at:", address(implementation));
-        console.log("TimelockController deployed at:", address(timelock));
-        console.log("SafeGuard proxy deployed at:", address(proxy));
-        console.log("Admin address set to:", admin);
-        console.log("PROCESSOR_MANAGER_ROLE granted to admin");
-        console.log("Timelock delay set to:", oneDay, "seconds (1 day)");
+        safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), _admin);
 
         vm.stopBroadcast();
+
+        // Log deployment
+        console.log("=== SafeGuard Deployed ===");
+        console.log("  Name:", _name);
+        console.log("  Admin:", _admin);
+        console.log("  Implementation:", address(implementation));
+        console.log("  Proxy:", address(safeguard));
+        console.log("  ProxyAdmin:", ProxyUtils.getProxyAdmin(address(safeguard)));
+        console.log("  Timelock:", address(timelock));
 
         _saveDeployment();
     }
