@@ -15,7 +15,25 @@ import {AccessControlUpgradeable} from
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
-    bool public checkTransactionEnabled;
+
+    /// @notice Storage struct for SafeGuard-specific state
+    struct SafeGuardStorage {
+        bool checkTransactionEnabled;
+    }
+
+    /// @notice Get the SafeGuard storage using diamond storage pattern
+    /// @return $ The SafeGuard storage reference
+    function _getSafeGuardStorage() internal pure returns (SafeGuardStorage storage $) {
+        assembly {
+            // keccak256("yieldnest.storage.safeguard")
+            $.slot := 0xdc30ccdf80e30c536bd9759df258d626d95ef881fdef2f7b8e27144d76dc25d9
+        }
+    }
+
+    /// @notice Returns whether transaction checking is enabled
+    function checkTransactionEnabled() public view returns (bool) {
+        return _getSafeGuardStorage().checkTransactionEnabled;
+    }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -32,7 +50,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         // Grant the admin role to the deployer
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
 
-        checkTransactionEnabled = true;
+        _setCheckTransactionEnabled(true);
     }
 
     /// TransactionGuard ///
@@ -54,7 +72,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         bytes memory, /* signatures */
         address /* executor */
     ) external view override {
-        if (!checkTransactionEnabled) return;
+        if (!_getSafeGuardStorage().checkTransactionEnabled) return;
         // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
         SafeGuard(address(this)).validateCall(to, value, data);
     }
@@ -93,7 +111,15 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
      * @param enabled Whether the transaction check should be enabled.
      */
     function setCheckTransactionEnabled(bool enabled) public onlyRole(PROCESSOR_MANAGER_ROLE) {
-        checkTransactionEnabled = enabled;
+        _setCheckTransactionEnabled(enabled);
+    }
+
+    /**
+     * @notice Internal function to set the checkTransactionEnabled flag.
+     * @param enabled Whether the transaction check should be enabled.
+     */
+    function _setCheckTransactionEnabled(bool enabled) internal {
+        _getSafeGuardStorage().checkTransactionEnabled = enabled;
     }
 
     /**
