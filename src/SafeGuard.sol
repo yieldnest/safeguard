@@ -49,6 +49,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
         // Grant the admin role to the deployer
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PROCESSOR_MANAGER_ROLE, admin);
 
         _setCheckTransactionEnabled(true);
     }
