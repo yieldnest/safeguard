@@ -63,7 +63,7 @@ contract GnosisSafeTest is Test {
         TransparentUpgradeableProxy transparentProxy =
             new TransparentUpgradeableProxy(address(implementation), adminAddress, "");
         safeguard = SafeGuard(address(transparentProxy));
-        safeguard.initialize(adminAddress);
+        safeguard.initialize("TestSafeGuard", adminAddress);
 
         // Grant PROCESSOR_MANAGER_ROLE to processorManager
         vm.startPrank(adminAddress);

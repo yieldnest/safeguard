@@ -40,7 +40,7 @@ contract SafeGuardTest is Test {
         // Cast proxy to SafeGuard
         safeguard = SafeGuard(address(transparentProxy));
 
-        safeguard.initialize(adminAddress);
+        safeguard.initialize("TestSafeGuard", adminAddress);
 
         // Grant PROCESSOR_MANAGER_ROLE to processorManager
         vm.startPrank(adminAddress);
@@ -237,12 +237,12 @@ contract SafeGuardTest is Test {
 
     function test_initialize_revertWhenCalledTwice() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        safeguard.initialize(adminAddress);
+        safeguard.initialize("TestSafeGuard", adminAddress);
     }
 
     function test_initialize_revertOnImplementation() public {
         vm.expectRevert(Initializable.InvalidInitialization.selector);
-        implementation.initialize(adminAddress);
+        implementation.initialize("TestSafeGuard", adminAddress);
     }
 
     // --- setCheckTransactionEnabled tests ---

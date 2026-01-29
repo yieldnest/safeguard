@@ -14,13 +14,13 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
-    string public constant NAME = "SafeGuard";
-    string public constant VERSION = "1.0.0";
+    string public constant VERSION = "0.1.0";
 
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
 
     /// @notice Storage struct for SafeGuard-specific state
     struct SafeGuardStorage {
+        string name;
         bool checkTransactionEnabled;
     }
 
@@ -33,6 +33,11 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         }
     }
 
+    /// @notice Returns the name of this SafeGuard instance
+    function name() public view returns (string memory) {
+        return _getSafeGuardStorage().name;
+    }
+
     /// @notice Returns whether transaction checking is enabled
     function checkTransactionEnabled() public view returns (bool) {
         return _getSafeGuardStorage().checkTransactionEnabled;
@@ -42,17 +47,20 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     constructor() {
         _disableInitializers();
     }
+
     /**
      * @notice Initializes the contract.
-     * @param admin The address that will be granted the admin role.
+     * @param _name The name for this SafeGuard instance.
+     * @param _admin The address that will be granted the admin role.
      */
-
-    function initialize(address admin) public initializer {
+    function initialize(string calldata _name, address _admin) public initializer {
         __AccessControl_init();
 
+        _getSafeGuardStorage().name = _name;
+
         // Grant the admin role to the deployer
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(PROCESSOR_MANAGER_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(PROCESSOR_MANAGER_ROLE, _admin);
 
         _setCheckTransactionEnabled(true);
     }

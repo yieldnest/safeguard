@@ -47,7 +47,7 @@ contract DeploySafeGuard is BaseScript {
         timelock = new TimelockController(1 days, proposers, executors, _admin);
 
         // Deploy proxy with initialization
-        bytes memory initData = abi.encodeWithSelector(SafeGuard.initialize.selector, _admin);
+        bytes memory initData = abi.encodeWithSelector(SafeGuard.initialize.selector, _name, _admin);
         TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
             address(implementation),
             address(timelock),
