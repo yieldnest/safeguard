@@ -55,9 +55,6 @@ contract DeploySafeGuard is BaseScript {
         );
         safeguard = SafeGuard(address(proxy));
 
-        // Grant PROCESSOR_MANAGER_ROLE to admin
-        safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), _admin);
-
         vm.stopBroadcast();
 
         // Log deployment
