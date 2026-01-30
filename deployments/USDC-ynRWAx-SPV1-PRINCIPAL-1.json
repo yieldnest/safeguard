@@ -1,0 +1,8 @@
+{
+  "admin": "0xfcad670592a3b24869C0b51a6c6FDED4F95D6975",
+  "name": "USDC-ynRWAx-SPV1-PRINCIPAL",
+  "safeguard-implementation": "0xfe681Df26969b299D45C5794155B03b092C00C81",
+  "safeguard-proxy": "0x6b0bC8F8426Fd57471540aF254B5Da8B1CB945e9",
+  "safeguard-proxyAdmin": "0xd97b2360Be8C36040410286aDac24EE43E2e5248",
+  "timelock": "0xC3bb0bB4998047Ce7eb0DAF90F6744aCa9FCa3ec"
+}
