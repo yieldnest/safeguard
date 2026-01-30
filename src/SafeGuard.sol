@@ -14,20 +14,55 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
+    string public constant VERSION = "0.1.0";
+
+    bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
+
+    /// @notice Storage struct for SafeGuard-specific state
+    struct SafeGuardStorage {
+        string name;
+        bool checkTransactionEnabled;
+    }
+
+    /// @notice Get the SafeGuard storage using diamond storage pattern
+    /// @return $ The SafeGuard storage reference
+    function _getSafeGuardStorage() internal pure returns (SafeGuardStorage storage $) {
+        assembly {
+            // keccak256("yieldnest.storage.safeguard")
+            $.slot := 0xdc30ccdf80e30c536bd9759df258d626d95ef881fdef2f7b8e27144d76dc25d9
+        }
+    }
+
+    /// @notice Returns the name of this SafeGuard instance
+    function name() public view returns (string memory) {
+        return _getSafeGuardStorage().name;
+    }
+
+    /// @notice Returns whether transaction checking is enabled
+    function checkTransactionEnabled() public view returns (bool) {
+        return _getSafeGuardStorage().checkTransactionEnabled;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
+
     /**
      * @notice Initializes the contract.
-     * @param admin The address that will be granted the admin role.
+     * @param _name The name for this SafeGuard instance.
+     * @param _admin The address that will be granted the admin role.
      */
-
-    function initialize(address admin) public initializer {
+    function initialize(string calldata _name, address _admin) public initializer {
         __AccessControl_init();
 
+        _getSafeGuardStorage().name = _name;
+
         // Grant the admin role to the deployer
-        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(PROCESSOR_MANAGER_ROLE, _admin);
+
+        _setCheckTransactionEnabled(true);
     }
 
     /// TransactionGuard ///
@@ -49,6 +84,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         bytes memory, /* signatures */
         address /* executor */
     ) external view override {
+        if (!_getSafeGuardStorage().checkTransactionEnabled) return;
         // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
         SafeGuard(address(this)).validateCall(to, value, data);
     }
@@ -82,8 +118,21 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
     /// VautLib Guard Rules ///
 
-    // Role identifier for processor manager
-    bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
+    /**
+     * @notice Enables or disables the transaction check.
+     * @param enabled Whether the transaction check should be enabled.
+     */
+    function setCheckTransactionEnabled(bool enabled) public onlyRole(PROCESSOR_MANAGER_ROLE) {
+        _setCheckTransactionEnabled(enabled);
+    }
+
+    /**
+     * @notice Internal function to set the checkTransactionEnabled flag.
+     * @param enabled Whether the transaction check should be enabled.
+     */
+    function _setCheckTransactionEnabled(bool enabled) internal {
+        _getSafeGuardStorage().checkTransactionEnabled = enabled;
+    }
 
     /**
      * @notice Validates a transaction call against the guard rules
@@ -98,19 +147,6 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
     /**
      * @notice Sets the processor rule for a given contract address and function signature.
-     * @param target The address of the target contract.
-     * @param functionSig The function signature.
-     * @param rule The function rule.
-     */
-    function _setProcessorRule(address target, bytes4 functionSig, IVault.FunctionRule calldata rule)
-        internal
-        virtual
-    {
-        VaultLib.setProcessorRule(target, functionSig, rule);
-    }
-
-    /**
-     * @notice Sets the processor rule for a given contract address and function signature.
      * @dev This function does not check for duplicate rules.
      * @param target The address of the target contract.
      * @param functionSig The function signature.
@@ -121,14 +157,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         bytes4[] calldata functionSig,
         IVault.FunctionRule[] calldata rule
     ) public virtual onlyRole(PROCESSOR_MANAGER_ROLE) {
-        uint256 targetLength = target.length;
-        if (targetLength != functionSig.length || targetLength != rule.length) {
-            revert IVault.InvalidArray();
-        }
-
-        for (uint256 i = 0; i < targetLength; i++) {
-            _setProcessorRule(target[i], functionSig[i], rule[i]);
-        }
+        VaultLib.setProcessorRules(target, functionSig, rule);
     }
 
     /**
