@@ -76,6 +76,24 @@ contract VerifySafeGuard is BaseScript, Test {
         assertTrue(safeguard.hasRole(safeguard.PROCESSOR_MANAGER_ROLE(), admin), "Admin does not have PROCESSOR_MANAGER_ROLE");
         console.log("[PASS] Admin has PROCESSOR_MANAGER_ROLE");
 
+        // Assert that the admin has GUARD_ADMIN_ROLE
+        assertTrue(safeguard.hasRole(safeguard.GUARD_ADMIN_ROLE(), admin), "Admin does not have GUARD_ADMIN_ROLE");
+        console.log("[PASS] Admin has GUARD_ADMIN_ROLE");
+
+        // ============================================
+        // SafeGuard Configuration Verification
+        // ============================================
+        console.log("");
+        console.log("--- SafeGuard Configuration ---");
+
+        // Assert that checkTransactionEnabled is true
+        assertTrue(safeguard.checkTransactionEnabled(), "checkTransactionEnabled should be true");
+        console.log("[PASS] checkTransactionEnabled is true");
+
+        // Assert that checkModuleTransactionEnabled is true
+        assertTrue(safeguard.checkModuleTransactionEnabled(), "checkModuleTransactionEnabled should be true");
+        console.log("[PASS] checkModuleTransactionEnabled is true");
+
         // ============================================
         // Timelock Configuration Verification
         // ============================================

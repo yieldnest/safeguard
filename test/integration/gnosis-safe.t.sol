@@ -65,9 +65,10 @@ contract GnosisSafeTest is Test {
         safeguard = SafeGuard(address(transparentProxy));
         safeguard.initialize("TestSafeGuard", adminAddress);
 
-        // Grant PROCESSOR_MANAGER_ROLE to processorManager
+        // Grant PROCESSOR_MANAGER_ROLE and GUARD_ADMIN_ROLE to processorManager
         vm.startPrank(adminAddress);
         safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), processorManager);
+        safeguard.grantRole(safeguard.GUARD_ADMIN_ROLE(), processorManager);
         vm.stopPrank();
 
         // Deploy Gnosis Safe contracts
@@ -637,7 +638,7 @@ contract GnosisSafeTest is Test {
         // Safe owner (user) should not be able to disable the check directly
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.PROCESSOR_MANAGER_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.GUARD_ADMIN_ROLE()
             )
         );
         vm.prank(user);
