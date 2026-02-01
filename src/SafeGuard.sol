@@ -14,7 +14,7 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
-    string public constant VERSION = "0.1.0";
+    string public constant VERSION = "0.2.0";
 
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
 
@@ -22,6 +22,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     struct SafeGuardStorage {
         string name;
         bool checkTransactionEnabled;
+        bool checkModuleTransactionEnabled;
     }
 
     /// @notice Get the SafeGuard storage using diamond storage pattern
@@ -41,6 +42,11 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     /// @notice Returns whether transaction checking is enabled
     function checkTransactionEnabled() public view returns (bool) {
         return _getSafeGuardStorage().checkTransactionEnabled;
+    }
+
+    /// @notice Returns whether module transaction checking is enabled
+    function checkModuleTransactionEnabled() public view returns (bool) {
+        return _getSafeGuardStorage().checkModuleTransactionEnabled;
     }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -63,6 +69,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         _grantRole(PROCESSOR_MANAGER_ROLE, _admin);
 
         _setCheckTransactionEnabled(true);
+        _setCheckModuleTransactionEnabled(true);
     }
 
     /// TransactionGuard ///
@@ -99,13 +106,15 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     /**
      * @inheritdoc IModuleGuard
      */
-    function checkModuleTransaction(address, uint256, bytes memory, Enum.Operation, address)
+    function checkModuleTransaction(address to, uint256 value, bytes memory data, Enum.Operation, address)
         external
-        pure
+        view
         override
         returns (bytes32 moduleTxHash)
     {
-        // No-op implementation
+        if (!_getSafeGuardStorage().checkModuleTransactionEnabled) return bytes32(0);
+        // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
+        SafeGuard(address(this)).validateCall(to, value, data);
         return bytes32(0);
     }
 
@@ -127,11 +136,27 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     }
 
     /**
+     * @notice Enables or disables the module transaction check.
+     * @param enabled Whether the module transaction check should be enabled.
+     */
+    function setCheckModuleTransactionEnabled(bool enabled) public onlyRole(PROCESSOR_MANAGER_ROLE) {
+        _setCheckModuleTransactionEnabled(enabled);
+    }
+
+    /**
      * @notice Internal function to set the checkTransactionEnabled flag.
      * @param enabled Whether the transaction check should be enabled.
      */
     function _setCheckTransactionEnabled(bool enabled) internal {
         _getSafeGuardStorage().checkTransactionEnabled = enabled;
+    }
+
+    /**
+     * @notice Internal function to set the checkModuleTransactionEnabled flag.
+     * @param enabled Whether the module transaction check should be enabled.
+     */
+    function _setCheckModuleTransactionEnabled(bool enabled) internal {
+        _getSafeGuardStorage().checkModuleTransactionEnabled = enabled;
     }
 
     /**

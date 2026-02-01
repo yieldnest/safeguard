@@ -699,18 +699,172 @@ contract GnosisSafeTest is Test {
         assertEq(address(safe).balance, 2 ether, "Safe should have 2 ETH remaining");
     }
 
-    // --- checkModuleTransaction no-op in integration ---
+    // --- checkModuleTransaction validation ---
 
-    function test_CheckModuleTransactionIsNoOp() public view {
-        // Module transactions bypass the guard entirely — checkModuleTransaction always returns bytes32(0)
+    function test_CheckModuleTransactionValidatesCall() public {
+        // checkModuleTransaction now validates calls when enabled
+        // Valid call should return bytes32(0)
         bytes32 result = safeguard.checkModuleTransaction(
+            address(mockToken),
+            0,
+            abi.encodeWithSelector(IERC20.approve.selector, address(mockVault), 100e18),
+            Enum.Operation.Call,
+            address(0xbeef)
+        );
+        assertEq(result, bytes32(0), "Valid module transaction should return bytes32(0)");
+    }
+
+    function test_CheckModuleTransactionRevertsOnInvalidCall() public {
+        // Invalid call should revert
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Guard.RuleNotActive.selector, address(safe), IOwnerManager.addOwnerWithThreshold.selector
+            )
+        );
+        safeguard.checkModuleTransaction(
             address(safe),
-            1 ether,
+            0,
             abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, address(0xdead), 1),
             Enum.Operation.Call,
             address(0xbeef)
         );
-        assertEq(result, bytes32(0), "checkModuleTransaction should always return bytes32(0)");
+    }
+
+    function test_CheckModuleTransactionBypassedWhenDisabled() public {
+        // Disable module transaction check
+        vm.prank(processorManager);
+        safeguard.setCheckModuleTransactionEnabled(false);
+
+        // Invalid call should now pass (returns bytes32(0) without validation)
+        bytes32 result = safeguard.checkModuleTransaction(
+            address(safe),
+            0,
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, address(0xdead), 1),
+            Enum.Operation.Call,
+            address(0xbeef)
+        );
+        assertEq(result, bytes32(0), "Module transaction should bypass validation when disabled");
+    }
+
+    // --- Full module integration tests ---
+
+    function _addModuleToSafe(address module) internal {
+        // Disable check temporarily to add module
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+
+        bytes memory data = abi.encodeWithSelector(IModuleManager.enableModule.selector, module);
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+        assertTrue(success, "Failed to enable module");
+
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(true);
+    }
+
+    function _setModuleGuard() internal {
+        // Disable check temporarily to set module guard
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(false);
+
+        bytes memory data = abi.encodeWithSelector(IModuleManager.setModuleGuard.selector, address(safeguard));
+        bool success = executeTransaction(address(safe), 0, data, Enum.Operation.Call);
+        assertTrue(success, "Failed to set module guard");
+
+        vm.prank(processorManager);
+        safeguard.setCheckTransactionEnabled(true);
+    }
+
+    function test_ModuleExecutesValidTransaction() public {
+        address module = makeAddr("module");
+        _addModuleToSafe(module);
+        _setModuleGuard();
+
+        // Mint tokens to the Safe
+        uint256 mintAmount = 1000e18;
+        vm.prank(address(safe));
+        mockToken.mint(mintAmount);
+
+        // Module executes a valid approve transaction
+        bytes memory approveData = abi.encodeWithSelector(IERC20.approve.selector, address(mockVault), 100e18);
+
+        vm.prank(module);
+        bool success = safe.execTransactionFromModule(address(mockToken), 0, approveData, Enum.Operation.Call);
+        assertTrue(success, "Module should execute valid transaction");
+        assertEq(mockToken.allowance(address(safe), address(mockVault)), 100e18, "Allowance should be set");
+    }
+
+    function test_ModuleBlockedOnInvalidTransaction() public {
+        address module = makeAddr("module");
+        _addModuleToSafe(module);
+        _setModuleGuard();
+
+        // Module tries to execute an invalid transaction (no rule for addOwner)
+        bytes memory addOwnerData =
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, makeAddr("newOwner"), 1);
+
+        vm.prank(module);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Guard.RuleNotActive.selector, address(safe), IOwnerManager.addOwnerWithThreshold.selector
+            )
+        );
+        safe.execTransactionFromModule(address(safe), 0, addOwnerData, Enum.Operation.Call);
+    }
+
+    function test_ModuleBypassesGuardWhenCheckDisabled() public {
+        address module = makeAddr("module");
+        _addModuleToSafe(module);
+        _setModuleGuard();
+
+        // Disable module transaction check
+        vm.prank(processorManager);
+        safeguard.setCheckModuleTransactionEnabled(false);
+
+        // Module can now execute any transaction
+        bytes memory addOwnerData =
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, makeAddr("newOwner"), 1);
+
+        vm.prank(module);
+        bool success = safe.execTransactionFromModule(address(safe), 0, addOwnerData, Enum.Operation.Call);
+        assertTrue(success, "Module should bypass guard when check disabled");
+        assertTrue(safe.isOwner(makeAddr("newOwner")), "New owner should have been added");
+    }
+
+    function test_ModuleAndOwnerTransactionsIndependentlyControlled() public {
+        address module = makeAddr("module");
+        _addModuleToSafe(module);
+        _setModuleGuard();
+
+        // Mint tokens
+        uint256 mintAmount = 1000e18;
+        vm.prank(address(safe));
+        mockToken.mint(mintAmount);
+
+        // Disable only module check
+        vm.prank(processorManager);
+        safeguard.setCheckModuleTransactionEnabled(false);
+
+        // Module can execute invalid transaction
+        bytes memory addOwnerData =
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, makeAddr("newOwner"), 1);
+        vm.prank(module);
+        bool success = safe.execTransactionFromModule(address(safe), 0, addOwnerData, Enum.Operation.Call);
+        assertTrue(success, "Module should bypass guard");
+
+        // Owner transaction is still checked
+        address anotherOwner = makeAddr("anotherOwner");
+        bytes memory addOwnerData2 =
+            abi.encodeWithSelector(IOwnerManager.addOwnerWithThreshold.selector, anotherOwner, 1);
+        executeTransaction(
+            address(safe),
+            0,
+            addOwnerData2,
+            Enum.Operation.Call,
+            abi.encodeWithSelector(
+                Guard.RuleNotActive.selector, address(safe), IOwnerManager.addOwnerWithThreshold.selector
+            )
+        );
+        assertFalse(safe.isOwner(anotherOwner), "Owner transaction should still be blocked");
     }
 
     // --- Multiple rules set and queried correctly ---
