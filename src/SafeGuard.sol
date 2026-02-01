@@ -81,6 +81,9 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     /**
      * @notice Called by the Safe contract before a transaction is executed.
      * @dev Reverts on empty calldata (data.length < 4). ETH transfers with empty data are blocked.
+     * @dev DelegateCall is not blocked. Rules validate target+selector, but delegatecall executes
+     *      the target's code in the Safe's context. Ensure rules don't permit delegatecall to
+     *      contracts with dangerous fallback logic.
      */
     function checkTransaction(
         address to,
