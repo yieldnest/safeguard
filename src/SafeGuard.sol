@@ -13,7 +13,7 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
-    string public constant VERSION = "0.3.0";
+    string public constant VERSION = "0.2.0";
 
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
     bytes32 public constant GUARD_ADMIN_ROLE = keccak256("GUARD_ADMIN_ROLE");
