@@ -85,8 +85,20 @@ compare_bytecode() {
     local onchain=$(cast code "$addr" --rpc-url "$RPC_URL" 2>/dev/null)
 
     # Get local deployed bytecode from forge artifacts
-    local artifact_path="out/$(basename ${contract_path%.sol})/${name}.json"
+    # Try to find the artifact for the contract source including .sol in the path
+    local artifact_path="out/${contract_path}/${name}.json"
+    if [ ! -f "$artifact_path" ]; then
+        # If that doesn't exist, fallback to the common pattern
+        artifact_path="out/$(basename ${contract_path%.sol})/${name}.json"
+        if [ ! -f "$artifact_path" ]; then
+            # Also try with .sol left in basename (handles e.g. SafeGuard.sol/SafeGuard.json)
+            artifact_path="out/$(basename ${contract_path})/${name}.json"
+        fi
+    fi
     local local_bytecode=$(jq -r '.deployedBytecode.object' "$artifact_path" 2>/dev/null)
+
+
+    echo "artifact_path: $artifact_path"
 
     if [ -z "$local_bytecode" ] || [ "$local_bytecode" = "null" ]; then
         echo "  WARNING: Could not extract local bytecode from $artifact_path"
