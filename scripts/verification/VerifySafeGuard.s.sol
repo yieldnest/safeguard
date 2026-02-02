@@ -76,6 +76,24 @@ contract VerifySafeGuard is BaseScript, Test {
         assertTrue(safeguard.hasRole(safeguard.PROCESSOR_MANAGER_ROLE(), admin), "Admin does not have PROCESSOR_MANAGER_ROLE");
         console.log("[PASS] Admin has PROCESSOR_MANAGER_ROLE");
 
+        // Assert that the admin has GUARD_ADMIN_ROLE
+        assertTrue(safeguard.hasRole(safeguard.GUARD_ADMIN_ROLE(), admin), "Admin does not have GUARD_ADMIN_ROLE");
+        console.log("[PASS] Admin has GUARD_ADMIN_ROLE");
+
+        // ============================================
+        // SafeGuard Configuration Verification
+        // ============================================
+        console.log("");
+        console.log("--- SafeGuard Configuration ---");
+
+        // Assert that checkTransactionEnabled is true
+        assertTrue(safeguard.checkTransactionEnabled(), "checkTransactionEnabled should be true");
+        console.log("[PASS] checkTransactionEnabled is true");
+
+        // Assert that checkModuleTransactionEnabled is true
+        assertTrue(safeguard.checkModuleTransactionEnabled(), "checkModuleTransactionEnabled should be true");
+        console.log("[PASS] checkModuleTransactionEnabled is true");
+
         // ============================================
         // Timelock Configuration Verification
         // ============================================
@@ -100,6 +118,24 @@ contract VerifySafeGuard is BaseScript, Test {
         // Assert that the admin has the timelock admin role
         assertTrue(timelock.hasRole(timelock.DEFAULT_ADMIN_ROLE(), admin), "Admin does not have DEFAULT_ADMIN_ROLE in timelock");
         console.log("[PASS] Admin has DEFAULT_ADMIN_ROLE in timelock");
+
+        // Assert that the admin has the canceller role in the timelock
+        assertTrue(timelock.hasRole(timelock.CANCELLER_ROLE(), admin), "Admin does not have CANCELLER_ROLE in timelock");
+        console.log("[PASS] Admin has CANCELLER_ROLE in timelock");
+
+        // ============================================
+        // Verify No Extra Role Holders in Timelock
+        // ============================================
+        console.log("");
+        console.log("--- Timelock Role Exclusivity ---");
+
+        // Verify only admin has PROPOSER_ROLE (check that address(0) doesn't have it - would mean open role)
+        assertFalse(timelock.hasRole(timelock.PROPOSER_ROLE(), address(0)), "PROPOSER_ROLE is open to anyone");
+        console.log("[PASS] PROPOSER_ROLE is not open to anyone");
+
+        // Verify only admin has EXECUTOR_ROLE (check that address(0) doesn't have it - would mean open role)
+        assertFalse(timelock.hasRole(timelock.EXECUTOR_ROLE(), address(0)), "EXECUTOR_ROLE is open to anyone");
+        console.log("[PASS] EXECUTOR_ROLE is not open to anyone");
 
         // ============================================
         // Summary

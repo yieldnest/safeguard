@@ -42,9 +42,10 @@ contract SafeGuardTest is Test {
 
         safeguard.initialize("TestSafeGuard", adminAddress);
 
-        // Grant PROCESSOR_MANAGER_ROLE to processorManager
+        // Grant PROCESSOR_MANAGER_ROLE and GUARD_ADMIN_ROLE to processorManager
         vm.startPrank(adminAddress);
         safeguard.grantRole(safeguard.PROCESSOR_MANAGER_ROLE(), processorManager);
+        safeguard.grantRole(safeguard.GUARD_ADMIN_ROLE(), processorManager);
         vm.stopPrank();
     }
 
@@ -247,10 +248,10 @@ contract SafeGuardTest is Test {
 
     // --- setCheckTransactionEnabled tests ---
 
-    function test_setCheckTransactionEnabled_revertWhenCallerNotProcessorManager() public {
+    function test_setCheckTransactionEnabled_revertWhenCallerNotGuardAdmin() public {
         vm.expectRevert(
             abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.PROCESSOR_MANAGER_ROLE()
+                IAccessControl.AccessControlUnauthorizedAccount.selector, user, safeguard.GUARD_ADMIN_ROLE()
             )
         );
         vm.prank(user);
@@ -432,10 +433,26 @@ contract SafeGuardTest is Test {
         );
     }
 
-    // --- checkModuleTransaction is a no-op ---
+    // --- checkModuleTransaction validates when enabled ---
 
-    function test_checkModuleTransaction_isNoOp() public view {
-        // checkModuleTransaction should never revert and always return bytes32(0)
+    function test_checkModuleTransaction_validatesWhenEnabled() public {
+        // checkModuleTransaction should revert on invalid call when enabled
+        vm.expectRevert(abi.encodeWithSelector(Guard.RuleNotActive.selector, address(0xdead), bytes4(0xdeadbeef)));
+        safeguard.checkModuleTransaction(
+            address(0xdead),
+            1 ether,
+            abi.encodeWithSelector(bytes4(0xdeadbeef), uint256(1)),
+            Enum.Operation.Call,
+            address(0xbeef)
+        );
+    }
+
+    function test_checkModuleTransaction_bypassesWhenDisabled() public {
+        // Disable module transaction check
+        vm.prank(processorManager);
+        safeguard.setCheckModuleTransactionEnabled(false);
+
+        // checkModuleTransaction should return bytes32(0) without validation
         bytes32 result = safeguard.checkModuleTransaction(
             address(0xdead),
             1 ether,
@@ -443,7 +460,7 @@ contract SafeGuardTest is Test {
             Enum.Operation.Call,
             address(0xbeef)
         );
-        assertEq(result, bytes32(0), "checkModuleTransaction should return bytes32(0)");
+        assertEq(result, bytes32(0), "checkModuleTransaction should return bytes32(0) when disabled");
     }
 
     // --- checkAfterExecution and checkAfterModuleExecution are no-ops ---

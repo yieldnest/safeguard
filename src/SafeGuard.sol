@@ -5,7 +5,6 @@ import {BaseTransactionGuard, ITransactionGuard} from "lib/safe-smart-account/co
 import {BaseModuleGuard, IModuleGuard} from "lib/safe-smart-account/contracts/base/ModuleManager.sol";
 import {IERC165} from "lib/safe-smart-account/contracts/interfaces/IERC165.sol";
 import {Enum} from "lib/safe-smart-account/contracts/libraries/Enum.sol";
-import {ISafe} from "lib/safe-smart-account/contracts/interfaces/ISafe.sol";
 import {Guard} from "lib/yieldnest-vault/src/module/Guard.sol";
 import {VaultLib, IVault} from "lib/yieldnest-vault/src/library/VaultLib.sol";
 import {IAccessControl} from "lib/openzeppelin-contracts/contracts/access/IAccessControl.sol";
@@ -14,14 +13,19 @@ import {AccessControlUpgradeable} from
     "lib/openzeppelin-contracts-upgradeable/contracts/access/AccessControlUpgradeable.sol";
 
 contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgradeable {
-    string public constant VERSION = "0.1.0";
+    string public constant VERSION = "0.2.0";
 
     bytes32 public constant PROCESSOR_MANAGER_ROLE = keccak256("PROCESSOR_MANAGER_ROLE");
+    bytes32 public constant GUARD_ADMIN_ROLE = keccak256("GUARD_ADMIN_ROLE");
+
+    event CheckTransactionEnabledSet(bool enabled);
+    event CheckModuleTransactionEnabledSet(bool enabled);
 
     /// @notice Storage struct for SafeGuard-specific state
     struct SafeGuardStorage {
         string name;
         bool checkTransactionEnabled;
+        bool checkModuleTransactionEnabled;
     }
 
     /// @notice Get the SafeGuard storage using diamond storage pattern
@@ -43,6 +47,11 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         return _getSafeGuardStorage().checkTransactionEnabled;
     }
 
+    /// @notice Returns whether module transaction checking is enabled
+    function checkModuleTransactionEnabled() public view returns (bool) {
+        return _getSafeGuardStorage().checkModuleTransactionEnabled;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -58,18 +67,23 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
 
         _getSafeGuardStorage().name = _name;
 
-        // Grant the admin role to the deployer
+        // Grant roles to the admin
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(PROCESSOR_MANAGER_ROLE, _admin);
+        _grantRole(GUARD_ADMIN_ROLE, _admin);
 
         _setCheckTransactionEnabled(true);
+        _setCheckModuleTransactionEnabled(true);
     }
 
     /// TransactionGuard ///
 
     /**
      * @notice Called by the Safe contract before a transaction is executed.
-     * @dev Reverts if the transaction is not executed by an owner.
+     * @dev Reverts on empty calldata (data.length < 4). ETH transfers with empty data are blocked.
+     * @dev DelegateCall is not blocked. Rules validate target+selector, but delegatecall executes
+     *      the target's code in the Safe's context. Ensure rules don't permit delegatecall to
+     *      contracts with dangerous fallback logic.
      */
     function checkTransaction(
         address to,
@@ -97,15 +111,21 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
     }
 
     /**
-     * @inheritdoc IModuleGuard
+     * @notice Called by the Safe contract before a module transaction is executed.
+     * @dev Reverts on empty calldata (data.length < 4). ETH transfers with empty data are blocked.
+     * @dev DelegateCall is not blocked. Rules validate target+selector, but delegatecall executes
+     *      the target's code in the Safe's context. Ensure rules don't permit delegatecall to
+     *      contracts with dangerous fallback logic.
      */
-    function checkModuleTransaction(address, uint256, bytes memory, Enum.Operation, address)
+    function checkModuleTransaction(address to, uint256 value, bytes memory data, Enum.Operation, address)
         external
-        pure
+        view
         override
         returns (bytes32 moduleTxHash)
     {
-        // No-op implementation
+        if (!_getSafeGuardStorage().checkModuleTransactionEnabled) return bytes32(0);
+        // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
+        SafeGuard(address(this)).validateCall(to, value, data);
         return bytes32(0);
     }
 
@@ -116,14 +136,22 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         // No-op implementation
     }
 
-    /// VautLib Guard Rules ///
+    /// VaultLib Guard Rules ///
 
     /**
      * @notice Enables or disables the transaction check.
      * @param enabled Whether the transaction check should be enabled.
      */
-    function setCheckTransactionEnabled(bool enabled) public onlyRole(PROCESSOR_MANAGER_ROLE) {
+    function setCheckTransactionEnabled(bool enabled) public onlyRole(GUARD_ADMIN_ROLE) {
         _setCheckTransactionEnabled(enabled);
+    }
+
+    /**
+     * @notice Enables or disables the module transaction check.
+     * @param enabled Whether the module transaction check should be enabled.
+     */
+    function setCheckModuleTransactionEnabled(bool enabled) public onlyRole(GUARD_ADMIN_ROLE) {
+        _setCheckModuleTransactionEnabled(enabled);
     }
 
     /**
@@ -132,6 +160,16 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
      */
     function _setCheckTransactionEnabled(bool enabled) internal {
         _getSafeGuardStorage().checkTransactionEnabled = enabled;
+        emit CheckTransactionEnabledSet(enabled);
+    }
+
+    /**
+     * @notice Internal function to set the checkModuleTransactionEnabled flag.
+     * @param enabled Whether the module transaction check should be enabled.
+     */
+    function _setCheckModuleTransactionEnabled(bool enabled) internal {
+        _getSafeGuardStorage().checkModuleTransactionEnabled = enabled;
+        emit CheckModuleTransactionEnabledSet(enabled);
     }
 
     /**
