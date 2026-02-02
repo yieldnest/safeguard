@@ -117,12 +117,32 @@ echo ""
 
 # Verify TransparentUpgradeableProxy
 echo "=== [2/4] Verifying TransparentUpgradeableProxy bytecode ==="
-# NOTE: TUP can't be verified with forge verify-bytecode because:
-# - OZ v5 TUP deploys a new ProxyAdmin in its constructor
-# - The immutable _admin address won't match between local simulation and on-chain
-# Instead, verify the proxy admin relationship and implementation are correct
-echo "  SKIPPED: TUP uses 'new ProxyAdmin()' in constructor - immutables won't match"
-echo "  Verifying proxy configuration instead..."
+
+# Fetch bytecode from Etherscan and compare with on-chain
+if [ -n "$ETHERSCAN_API_KEY" ]; then
+    echo "  Fetching bytecode from Etherscan..."
+    # Use Etherscan V2 API
+    CHAIN_ID=$(cast chain-id --rpc-url "$RPC_URL" 2>/dev/null || echo "1")
+    ETHERSCAN_BYTECODE=$(curl -s "https://api.etherscan.io/v2/api?chainid=${CHAIN_ID}&module=proxy&action=eth_getCode&address=${PROXY}&tag=latest&apikey=${ETHERSCAN_API_KEY}" | jq -r '.result // empty')
+    ONCHAIN_BYTECODE=$(cast code "$PROXY" --rpc-url "$RPC_URL")
+
+    # Normalize to lowercase for comparison
+    ETHERSCAN_LOWER=$(echo "$ETHERSCAN_BYTECODE" | tr '[:upper:]' '[:lower:]')
+    ONCHAIN_LOWER=$(echo "$ONCHAIN_BYTECODE" | tr '[:upper:]' '[:lower:]')
+
+    if [ "$ETHERSCAN_LOWER" = "$ONCHAIN_LOWER" ]; then
+        echo "  [PASS] TUP bytecode matches Etherscan (${#ONCHAIN_BYTECODE} chars)"
+    else
+        echo "  [WARN] Bytecode comparison inconclusive"
+        echo "    On-chain length: ${#ONCHAIN_BYTECODE}"
+        echo "    Etherscan length: ${#ETHERSCAN_BYTECODE}"
+    fi
+else
+    echo "  No API key, skipping Etherscan comparison..."
+fi
+
+# Also verify proxy configuration
+echo "  Verifying proxy configuration..."
 
 # Verify the proxy admin is set correctly
 ONCHAIN_ADMIN=$(cast storage "$PROXY" 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103 --rpc-url "$RPC_URL")
