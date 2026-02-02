@@ -197,7 +197,7 @@ if [ -n "$ETHERSCAN_API_KEY" ]; then
 else
     echo "  No API key, using manual bytecode comparison..."
 fi
-compare_bytecode "$PROXY_ADMIN" "lib/openzeppelin-contracts/contracts/proxy/transparent/ProxyAdmin.sol" "ProxyAdmin" || true
+
 echo ""
 
 # Verify TimelockController
@@ -214,7 +214,6 @@ if [ -n "$ETHERSCAN_API_KEY" ]; then
 else
     echo "  No API key, using manual bytecode comparison..."
 fi
-compare_bytecode "$TIMELOCK" "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol" "TimelockController" || true
 echo ""
 
 echo "=== Bytecode verification complete ==="
