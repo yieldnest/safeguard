@@ -99,7 +99,11 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         address /* executor */
     ) external view override {
         if (!_getSafeGuardStorage().checkTransactionEnabled) return;
-        // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
+        // Safe's "Reject" tx (0-value, empty calldata to self) is blocked here since
+        // Guard.validateCall reverts on data < 4 bytes. Does not work out of the box.
+        //
+        // [SG-04] `value` is not validated — any whitelisted call can carry arbitrary ETH.
+        // UINT256 param types are defined but not enforced. Use a custom IValidator to constrain.
         SafeGuard(address(this)).validateCall(to, value, data);
     }
 
@@ -124,7 +128,7 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
         returns (bytes32 moduleTxHash)
     {
         if (!_getSafeGuardStorage().checkModuleTransactionEnabled) return bytes32(0);
-        // calls back to itself to be able to pass in a calldata parameter. Less gas efficient.
+        // Same notes as checkTransaction: "Reject" tx blocked, value not validated [SG-04].
         SafeGuard(address(this)).validateCall(to, value, data);
         return bytes32(0);
     }
@@ -180,6 +184,9 @@ contract SafeGuard is BaseTransactionGuard, BaseModuleGuard, AccessControlUpgrad
      * @dev This function is called by the checkTransaction function to validate calls
      */
     function validateCall(address target, uint256 value, bytes calldata data) public view {
+        // Multicall support (VaultLib.processor) is desirable here — it applies validation
+        // to each individual tx in the batch. Currently not supported as the Safe only calls
+        // checkTransaction with a single (to, value, data) tuple per execution.
         Guard.validateCall(target, value, data);
     }
 
